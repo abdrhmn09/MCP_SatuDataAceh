@@ -1,0 +1,10 @@
+.venv
+path
+__pycache__
+*.pyc
+.git
+.github
+.gitignore
+tests
+data.json
+satu_data_aceh_mcp.egg-info

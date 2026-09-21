@@ -1,0 +1,21 @@
+# Lingkungan virtual
+.venv/
+venv/
+ENV/
+env/
+path/
+*.egg-info/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# File sistem operasi
+.DS_Store
+Thumbs.db
+
+# Konfigurasi IDE
+.vscode/
+.idea/

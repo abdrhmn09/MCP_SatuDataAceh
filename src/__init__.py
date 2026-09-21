@@ -1,0 +1,1 @@
+"""MCP server untuk katalog Satu Data Aceh."""
