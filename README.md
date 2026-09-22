@@ -88,6 +88,41 @@ docker run --rm -p 8000:8000 satu-data-aceh-mcp
 
 File `render.yaml` sudah tersedia. Hubungkan repository ke Render sebagai Blueprint. Render akan memakai `Dockerfile`, health check `/health`, dan menjalankan SSE pada port `8000`.
 
+## Cloudflare Workers
+
+Adapter TypeScript untuk Cloudflare Workers tersedia di folder `worker/`. Server Python tetap digunakan untuk mode lokal. Worker menggunakan Streamable HTTP pada `/mcp` dan health check pada `/health`.
+
+Dari root project:
+
+```bash
+cd worker
+npm install
+npm run typecheck
+npx wrangler dev --local --port 8787
+```
+
+Uji lokal:
+
+```bash
+curl http://127.0.0.1:8787/health
+```
+
+Deploy ke Cloudflare:
+
+```bash
+cd worker
+npx wrangler login
+npx wrangler deploy
+```
+
+Cloudflare akan memberikan URL `workers.dev`. Gunakan endpoint berikut untuk koneksi remote MCP:
+
+```text
+https://nama-worker.username.workers.dev/mcp
+```
+
+Worker mengambil katalog langsung dari Portal Satu Data Aceh dan tidak membundel `data.json` lokal. Free plan Cloudflare memiliki batas harian dan CPU; lihat log Worker setelah deployment. Autentikasi sengaja tidak diaktifkan, sehingga gunakan hanya untuk data publik.
+
 ## Tool
 
 - `cari_katalog_data(kata_kunci)`: mencari maksimal lima dataset berdasarkan judul, deskripsi, keyword, penerbit, atau identifier. Untuk distribution HTML, server mencoba menemukan link CSV dari halaman dataset.
