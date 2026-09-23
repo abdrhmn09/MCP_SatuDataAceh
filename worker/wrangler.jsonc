@@ -8,6 +8,7 @@
     "CATALOG_URL": "https://satudata.acehprov.go.id/data.json",
     "DATA_YEAR": "2025",
     "BPS_DOMAIN": "1100",
+    "BPS_DATASET_MAP": "{\"0116d97b-1b4a-4c6a-a243-33833660fb85\":\"621\"}",
     "CATALOG_TTL_SECONDS": "3600",
     "MAX_REQUESTS_PER_MINUTE": "60"
   }

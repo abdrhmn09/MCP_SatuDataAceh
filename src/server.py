@@ -3,6 +3,7 @@ from io import StringIO
 import asyncio
 import httpx
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -11,7 +12,11 @@ from collections import deque
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlparse
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP  # mcp<2
+except ImportError:
+    from mcp.server.mcpserver import MCPServer as FastMCP  # mcp>=2
+
 from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -82,17 +87,27 @@ class _RateLimiter:
 
 
 # Host hanya dibuka ke publik saat deployment remote memilih MCP_HOST=0.0.0.0.
-mcp = FastMCP(
-    "Satu Data Aceh Server",
-    instructions="Mencari dataset publik Aceh dan membaca data CSV.",
-    host=os.getenv("MCP_HOST", "127.0.0.1"),
-    port=_env_int("MCP_PORT", _env_int("PORT", 8000)),
-)
+_MCP_HOST = os.getenv("MCP_HOST", "127.0.0.1")
+_MCP_PORT = _env_int("MCP_PORT", _env_int("PORT", 8000))
+try:
+    mcp = FastMCP(
+        "Satu Data Aceh Server",
+        instructions="Mencari dataset publik Aceh dan membaca data CSV.",
+        host=_MCP_HOST,
+        port=_MCP_PORT,
+    )
+except TypeError:
+    # mcp>=2 MCPServer tidak menerima host/port di constructor
+    mcp = FastMCP(
+        name="Satu Data Aceh Server",
+        instructions="Mencari dataset publik Aceh dan membaca data CSV.",
+    )
 MAX_CSV_BYTES = 5 * 1024 * 1024
 MAX_HTML_BYTES = 2 * 1024 * 1024
 DEFAULT_DATA_YEAR = os.getenv("SATU_DATA_ACEH_DATA_YEAR", "2025")
 BPS_API_KEY = os.getenv("BPS_API_KEY", "")
 BPS_DOMAIN = os.getenv("BPS_DOMAIN", "1100")
+BPS_DATASET_MAP = os.getenv("BPS_DATASET_MAP", "{}")
 RATE_LIMIT_PER_MINUTE = _env_int("MCP_RATE_LIMIT_PER_MINUTE", 60)
 _rate_limiter = _RateLimiter(RATE_LIMIT_PER_MINUTE)
 
@@ -215,14 +230,16 @@ def _url_csv_item(item: dict[str, object]) -> str:
 
 def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
     identifier = str(item.get("identifier", "")).strip()
-    metadata = " ".join(
-        str(item.get(field, "")) for field in ("title", "description", "keyword")
-    ).lower()
-    if "kemiskinan" not in metadata and "penduduk miskin" not in metadata and identifier != "621":
+    try:
+        mapping = json.loads(BPS_DATASET_MAP)
+    except (TypeError, ValueError):
+        return None
+    variable = mapping.get(identifier) or ("621" if identifier == "621" else "")
+    if not variable:
         return None
     return {
         "domain": BPS_DOMAIN,
-        "variable": "621",
+        "variable": str(variable),
         "reference_url": _halaman_dataset(item),
     }
 
@@ -501,7 +518,13 @@ def main() -> None:
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     if transport not in {"stdio", "sse", "streamable-http"}:
         raise ValueError("MCP_TRANSPORT harus berupa stdio, sse, atau streamable-http.")
-    mcp.run(transport=transport)
+    if transport == "stdio":
+        mcp.run(transport=transport)
+    else:
+        try:
+            mcp.run(transport=transport, host=_MCP_HOST, port=_MCP_PORT)
+        except TypeError:
+            mcp.run(transport=transport)
 
 
 if __name__ == "__main__":

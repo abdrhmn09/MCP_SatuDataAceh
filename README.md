@@ -34,6 +34,8 @@ AI akan menggunakan MCP untuk mencari dataset, kemudian membaca data apabila URL
 
 Jika data Satu Data Aceh hanya berisi metadata atau header tanpa angka, MCP dapat mencoba mengambil data dari BPS untuk topik yang sudah dipetakan, seperti kemiskinan. Hasil akan mencantumkan sumber data yang digunakan. Fallback BPS hanya aktif jika pengelola server sudah memasang API key BPS.
 
+Fallback tidak menebak variabel BPS dari judul dataset. Pengelola harus memasang mapping identifier dataset ke variabel BPS yang sudah diverifikasi, misalnya `{"621":"621"}`.
+
 MCP memeriksa isi sumber sebelum menampilkan hasil. Jika sumber hanya berisi header, kosong, atau mengembalikan halaman HTML, hasil akan ditandai sebagai data yang belum tersedia dan tidak dianggap sebagai angka resmi.
 
 ## Pemasangan di ChatGPT

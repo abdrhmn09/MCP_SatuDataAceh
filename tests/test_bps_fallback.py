@@ -15,11 +15,17 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await server._ambil_dari_bps(item))
 
     async def test_bps_mapping_kemiskinan(self):
-        source = server._bps_source(
-            {"identifier": "621", "title": "Persentase Penduduk Miskin"}
-        )
-        self.assertEqual(source["domain"], server.BPS_DOMAIN)
+        with patch.object(server, "BPS_DATASET_MAP", '{"dataset-aceh-1":"621"}'):
+            source = server._bps_source(
+                {"identifier": "dataset-aceh-1", "title": "Persentase Penduduk Miskin"}
+            )
         self.assertEqual(source["variable"], "621")
+
+    async def test_bps_mapping_tidak_menebak_uuid(self):
+        source = server._bps_source(
+            {"identifier": "uuid-tidak-dipetakan", "title": "Persentase Penduduk Miskin"}
+        )
+        self.assertIsNone(source)
 
 
 if __name__ == "__main__":

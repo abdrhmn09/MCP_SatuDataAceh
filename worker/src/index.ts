@@ -9,6 +9,7 @@ interface Env {
   MAX_REQUESTS_PER_MINUTE: string;
   BPS_API_KEY?: string;
   BPS_DOMAIN?: string;
+  BPS_DATASET_MAP?: string;
 }
 
 interface Dataset {
@@ -146,15 +147,19 @@ function csvUrl(dataset: Dataset, env: Env): string {
 }
 
 function bpsSource(dataset: Dataset, env: Env): BpsSource | null {
-  const title = `${asText(dataset.title)} ${asText(dataset.description)} ${asText(dataset.keyword)}`.toLowerCase();
   const identifier = datasetId(dataset);
-  if (!title.includes("kemiskinan") && !title.includes("penduduk miskin") && identifier !== "621") {
+  let mapping: Record<string, string> = {};
+  try {
+    mapping = JSON.parse(env.BPS_DATASET_MAP || "{}") as Record<string, string>;
+  } catch {
     return null;
   }
+  const variable = mapping[identifier] || (identifier === "621" ? "621" : "");
+  if (!variable) return null;
   const domain = env.BPS_DOMAIN || "1100";
   return {
     domain,
-    variable: identifier === "621" ? "621" : "621",
+    variable,
     referenceUrl: datasetPage(dataset),
   };
 }
@@ -179,10 +184,15 @@ function bpsPayloadToText(payload: unknown): string {
 async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analysis: CsvAnalysis; source: BpsSource } | null> {
   const source = bpsSource(dataset, env);
   if (!source || !env.BPS_API_KEY) return null;
-  const response = await fetch(bpsUrl(source, env));
-  if (!response.ok) throw new Error(`BPS request failed: ${response.status}`);
-  const text = bpsPayloadToText(await response.json());
-  return { analysis: analyzeCsvText(text, MAX_ROWS), source };
+  try {
+    const response = await fetch(bpsUrl(source, env));
+    if (!response.ok) return null;
+    const text = bpsPayloadToText(await response.json());
+    return { analysis: analyzeCsvText(text, MAX_ROWS), source };
+  } catch (error) {
+    console.error("BPS fallback failed", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
 }
 
 async function loadCatalog(env: Env): Promise<Dataset[]> {
@@ -307,12 +317,14 @@ function createServer(env: Env): McpServer {
       let analysis = await fetchDatasetText(dataset, env);
       let source = "Satu Data Aceh";
       let referenceSource = datasetPage(dataset);
+      let sourceUrl = csvUrl(dataset, env);
       if (analysis.status !== "valid") {
         const bps = await fetchFromBps(dataset, env);
         if (bps) {
           analysis = bps.analysis;
           source = "BPS";
           referenceSource = bps.source.referenceUrl;
+          sourceUrl = bpsUrl(bps.source, env);
         }
       }
       const payload = {
@@ -327,7 +339,7 @@ function createServer(env: Env): McpServer {
           status: analysis.status,
           row_count: analysis.rowCount,
           column_count: analysis.columnCount,
-          source_url: csvUrl(dataset, env),
+          source_url: sourceUrl,
           landing_url: datasetPage(dataset),
           period: dataset.modified ?? dataset.issued ?? "",
           message: analysis.message ?? "",
