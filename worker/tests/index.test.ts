@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { analyzeCsvText, datasetYear, isPublicHttpsUrl, parseCsvRows, searchDatasets } from "../src/index";
+import {
+  analyzeCsvText,
+  bpsPayloadToText,
+  datasetYear,
+  isPublicHttpsUrl,
+  parseCsvRows,
+  searchDatasets,
+} from "../src/index";
 
 describe("Cloudflare Worker adapter", () => {
   it("menerima URL HTTPS publik dan menolak alamat lokal", () => {
@@ -56,5 +63,41 @@ describe("Cloudflare Worker adapter", () => {
     const result = analyzeCsvText("nama,nilai\n", 20);
     expect(result.status).toBe("header_only");
     expect(result.text).toBe("");
+  });
+
+  it("mengurai payload datacontent BPS dengan format matriks ke CSV", () => {
+    const payload = {
+      status: "OK",
+      "data-availability": "available",
+      var: [{ val: 621, label: "Persentase Penduduk Miskin", unit: "Persen" }],
+      vervar: [
+        { val: 1171, label: "Banda Aceh" },
+        { val: 1101, label: "Simeulue" },
+      ],
+      tahun: [
+        { val: 141, label: "2023" },
+        { val: 142, label: "2024" },
+      ],
+      turvar: [{ val: 0, label: "" }],
+      turtahun: [{ val: 0, label: "Tahunan" }],
+      datacontent: {
+        "1171621014100": 7.12,
+        "1171621014200": 7.04,
+        "1101621014100": 18.23,
+        "1101621014200": 17.95,
+      },
+    };
+    const csv = bpsPayloadToText(payload);
+    expect(csv).toContain("Banda Aceh");
+    expect(csv).toContain("Simeulue");
+    expect(csv).toContain("7.12");
+    expect(csv).toContain("18.23");
+    expect(csv.split("\n")).toHaveLength(5); // 1 header + 4 rows
+  });
+
+  it("mengembalikan string kosong jika payload BPS tidak valid atau kosong", () => {
+    expect(bpsPayloadToText(null)).toBe("");
+    expect(bpsPayloadToText({})).toBe("");
+    expect(bpsPayloadToText({ datacontent: {} })).toBe("");
   });
 });

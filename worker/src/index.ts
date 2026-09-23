@@ -168,7 +168,7 @@ function bpsUrl(source: BpsSource, env: Env): string {
   return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
 }
 
-function bpsPayloadToText(payload: unknown): string {
+export function bpsPayloadToText(payload: unknown): string {
   const root = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
 
   // ── Format 1: Dynamic Data BPS (datacontent matriks multidimensi) ──────────
