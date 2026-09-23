@@ -8,7 +8,11 @@
     "CATALOG_URL": "https://satudata.acehprov.go.id/data.json",
     "DATA_YEAR": "2025",
     "BPS_DOMAIN": "1100",
-    "BPS_DATASET_MAP": "{\"0116d97b-1b4a-4c6a-a243-33833660fb85\":\"621\"}",
+    // BPS_DATASET_MAP: identifier Satu Data Aceh → var_id BPS Web API
+    // Selalu terupdate di src/bps.py (Python) dan di sini (Worker).
+    // Untuk mendapatkan daftar var_id terbaru:
+    //   GET https://webapi.bps.go.id/v1/api/list/model/var/domain/1100/key/{KEY}
+    "BPS_DATASET_MAP": "{\"0116d97b-1b4a-4c6a-a243-33833660fb85\":\"621\",\"afefeee7-2dbb-4ab8-aa2c-71610fc5fdb6\":\"2212\",\"78794e4b-2bbe-45ef-abd1-0a65c2e98702\":\"498\",\"2414165c-27b1-41a1-8229-0a51a128636d\":\"498\",\"97e549de-0a20-452a-9948-455abe2532a8\":\"529\",\"22d3b2b0-8c0e-46cb-915d-7780fd4e1158\":\"199\",\"95ceff6a-c0d9-4ef5-b6cb-86eee4764833\":\"786\",\"bfe0cc05-78ff-46f2-9329-c943863e5c50\":\"199\",\"e8c8605b-5ce1-4637-be23-9108837e89c9\":\"1400\",\"0c63d096-1671-4afd-94b5-39048d378e56\":\"631\",\"1d4d7e1a-9d53-45a4-a11e-dc24d6c8cf25\":\"2212\",\"81dc3ba5-e050-47fe-846b-298ca2977216\":\"529\",\"f2585d70-70d1-49f9-8c78-6750a46e1780\":\"490\",\"d8c8a7f0-d329-4872-8546-294fd6267c7b\":\"1321\",\"21cece89-360f-480d-a3e9-a841a79e752d\":\"1350\",\"9d11046b-a61b-4169-bf20-b691483162ba\":\"1375\",\"3f92d70a-8533-4f25-bc9f-332b7a4c8b84\":\"1398\"}",
     "CATALOG_TTL_SECONDS": "3600",
     "MAX_REQUESTS_PER_MINUTE": "60"
   }

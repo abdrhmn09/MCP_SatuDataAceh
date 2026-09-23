@@ -107,9 +107,16 @@ MAX_HTML_BYTES = 2 * 1024 * 1024
 DEFAULT_DATA_YEAR = os.getenv("SATU_DATA_ACEH_DATA_YEAR", "2025")
 BPS_API_KEY = os.getenv("BPS_API_KEY", "")
 BPS_DOMAIN = os.getenv("BPS_DOMAIN", "1100")
-BPS_DATASET_MAP = os.getenv("BPS_DATASET_MAP", "{}")
+# BPS_DATASET_MAP: override via env, default kosong (gunakan BPS_INDICATOR_MAP dari bps.py)
+_BPS_DATASET_MAP_ENV = os.getenv("BPS_DATASET_MAP", "{}")
 RATE_LIMIT_PER_MINUTE = _env_int("MCP_RATE_LIMIT_PER_MINUTE", 60)
 _rate_limiter = _RateLimiter(RATE_LIMIT_PER_MINUTE)
+
+# Import modul BPS
+try:
+    from .bps import BPS_INDICATOR_MAP, BPS_KEYWORD_TO_VAR, bps_payload_ke_csv, cari_var_bps_dari_kata_kunci
+except ImportError:
+    from bps import BPS_INDICATOR_MAP, BPS_KEYWORD_TO_VAR, bps_payload_ke_csv, cari_var_bps_dari_kata_kunci
 
 
 def _url_aman(url: str) -> bool:
@@ -229,19 +236,38 @@ def _url_csv_item(item: dict[str, object]) -> str:
 
 
 def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
+    """Cari sumber BPS untuk item katalog.
+
+    Lookup priority:
+    1. Override dari env BPS_DATASET_MAP (JSON, untuk kustom tanpa deploy ulang)
+    2. BPS_INDICATOR_MAP bawaan dari bps.py (komprehensif, terawat)
+    """
     identifier = str(item.get("identifier", "")).strip()
+    if not identifier:
+        return None
+
+    # 1. Coba env override
     try:
-        mapping = json.loads(BPS_DATASET_MAP)
+        env_mapping: dict[str, str] = json.loads(_BPS_DATASET_MAP_ENV)
+        if identifier in env_mapping:
+            return {
+                "domain": BPS_DOMAIN,
+                "variable": str(env_mapping[identifier]),
+                "reference_url": _halaman_dataset(item),
+            }
     except (TypeError, ValueError):
-        return None
-    variable = mapping.get(identifier) or ("621" if identifier == "621" else "")
-    if not variable:
-        return None
-    return {
-        "domain": BPS_DOMAIN,
-        "variable": str(variable),
-        "reference_url": _halaman_dataset(item),
-    }
+        pass
+
+    # 2. Coba built-in indicator map
+    if identifier in BPS_INDICATOR_MAP:
+        entry = BPS_INDICATOR_MAP[identifier]
+        return {
+            "domain": BPS_DOMAIN,
+            "variable": str(entry["var"]),
+            "reference_url": _halaman_dataset(item),
+        }
+
+    return None
 
 
 def _bps_url(source: dict[str, str]) -> str:
@@ -270,17 +296,48 @@ def _bps_payload_to_csv(payload: object) -> str:
 
 
 async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[str, str]] | None:
+    """Ambil data dari BPS sebagai fallback untuk dataset Satu Data Aceh yang kosong."""
     source = _bps_source(item)
     if not source or not BPS_API_KEY:
         return None
+    url = _bps_url(source)
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-            response = await client.get(_bps_url(source))
+            response = await client.get(url)
             response.raise_for_status()
-            teks_csv = _bps_payload_to_csv(response.json())
-        return _analisis_csv(teks_csv, _bps_url(source), 50), source
+            teks_csv = bps_payload_ke_csv(response.json())
+        if not teks_csv:
+            return None
+        return _analisis_csv(teks_csv, url, 50), source
     except (httpx.HTTPError, ValueError, TypeError) as error:
         logger.warning("Sumber BPS gagal diproses: %s", type(error).__name__)
+        return None
+
+
+async def _ambil_langsung_dari_bps(var_id: str, domain: str = "1100") -> tuple[CsvReadResult, str] | None:
+    """Ambil data langsung dari BPS berdasarkan var_id (tanpa dataset Satu Data Aceh).
+
+    Digunakan oleh tool bandingkan_data untuk mendapatkan angka resmi terbaru dari BPS.
+    Mengembalikan (CsvReadResult, url_bps) atau None jika gagal / API key tidak ada.
+    """
+    if not BPS_API_KEY:
+        return None
+    url = (
+        f"https://webapi.bps.go.id/v1/api/list/model/data/"
+        f"domain/{quote(domain, safe='')}/"
+        f"var/{quote(var_id, safe='')}/"
+        f"key/{quote(BPS_API_KEY, safe='')}"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            teks_csv = bps_payload_ke_csv(response.json())
+        if not teks_csv:
+            return None
+        return _analisis_csv(teks_csv, url, 50), url
+    except (httpx.HTTPError, ValueError, TypeError) as error:
+        logger.warning("Pengambilan langsung BPS var=%s gagal: %s", var_id, type(error).__name__)
         return None
 
 
@@ -524,6 +581,141 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
         return "File yang diunduh bukan CSV yang valid atau encoding-nya tidak didukung."
     except ImportError:
         return "Format tabel belum tersedia karena dependency tabulate belum terpasang."
+
+
+@mcp.tool()
+async def bandingkan_data(indikator: str) -> str:
+    """
+    Mengambil data dari DUA sumber (Satu Data Aceh dan BPS) sekaligus dan
+    membandingkan mana yang lebih valid dan terbaru.
+
+    Gunakan alat ini ketika pengguna meminta data statistik resmi Aceh dan Anda
+    ingin memastikan angka yang paling akurat dan mutakhir.
+
+    Args:
+        indikator: Nama indikator statistik (contoh: "kemiskinan", "IPM", "pengangguran",
+                   "inflasi", "PDRB", "gini", "stunting", "padi", "perikanan").
+    """
+    if not await _rate_limiter.allow():
+        return "Batas permintaan tercapai. Coba lagi beberapa saat."
+
+    indikator = indikator.strip() if isinstance(indikator, str) else ""
+    if not indikator:
+        return "Nama indikator tidak boleh kosong."
+
+    katalog = await muat_katalog()
+    bagian: list[str] = []
+
+    # ── Cari di Satu Data Aceh ──────────────────────────────────────────────
+    hasil_sda = _cocokkan_dataset(katalog, indikator)
+    sda_status = "tidak_ditemukan"
+    sda_periode = "-"
+    sda_baris = 0
+    sda_teks = ""
+    sda_judul = "-"
+    sda_url = "-"
+
+    if hasil_sda:
+        item = hasil_sda[0]
+        sda_judul = str(item.get("title", ""))
+        sda_url = _halaman_dataset(item) or _url_csv_item(item)
+        csv_url = _url_csv_item(item)
+        sda_periode = str(item.get("modified") or item.get("issued") or "-")
+        if csv_url:
+            try:
+                result_sda = await _unduh_csv(csv_url, 20)
+                sda_status = result_sda.status
+                sda_baris = result_sda.row_count
+                sda_teks = result_sda.preview if result_sda.status == "valid" else result_sda.message
+            except httpx.HTTPError as e:
+                sda_status = "failed"
+                sda_teks = f"Gagal mengunduh: {type(e).__name__}"
+        else:
+            sda_status = "no_url"
+            sda_teks = "Tidak ada URL CSV tersedia di katalog."
+
+    bagian.append(
+        f"## Sumber 1: Portal Satu Data Aceh\n"
+        f"- **Status Data**: `{sda_status}` | **Baris**: {sda_baris} | **Periode**: {sda_periode}\n"
+        f"- **Dataset**: {sda_judul}\n"
+        f"- **URL**: {sda_url}\n\n"
+        f"{sda_teks if sda_teks else '_Data tidak tersedia._'}"
+    )
+
+    # ── Cari di BPS langsung ────────────────────────────────────────────────
+    bps_status = "tidak_ditemukan"
+    bps_periode = "-"
+    bps_baris = 0
+    bps_teks = ""
+    bps_url_tampil = "-"
+    var_info = cari_var_bps_dari_kata_kunci(indikator)
+
+    # Jika dataset Satu Data Aceh ditemukan, prioritaskan var dari mapping-nya
+    if hasil_sda:
+        bps_source_dari_katalog = _bps_source(hasil_sda[0])
+        if bps_source_dari_katalog:
+            var_info = {
+                "var": bps_source_dari_katalog["variable"],
+                "label": sda_judul,
+            }
+
+    if var_info:
+        bps_url_tampil = (
+            f"https://webapi.bps.go.id/v1/api/list/model/data/"
+            f"domain/{BPS_DOMAIN}/var/{var_info['var']}/key/***"
+        )
+        bps_result_tuple = await _ambil_langsung_dari_bps(var_info["var"], BPS_DOMAIN)
+        if bps_result_tuple:
+            result_bps, bps_url_actual = bps_result_tuple
+            bps_status = result_bps.status
+            bps_baris = result_bps.row_count
+            bps_teks = result_bps.preview if result_bps.status == "valid" else result_bps.message
+            # Coba ekstrak tahun terbaru dari preview
+            tahun_bps = re.findall(r"\b(20\d{2})\b", bps_teks)
+            bps_periode = max(tahun_bps) if tahun_bps else "-"
+        elif not BPS_API_KEY:
+            bps_status = "api_key_tidak_ada"
+            bps_teks = "BPS API key belum dikonfigurasi. Hubungi pengelola server."
+        else:
+            bps_status = "failed"
+            bps_teks = "Gagal mengambil data dari BPS API."
+    else:
+        bps_teks = (
+            f"Tidak ditemukan variabel BPS yang dipetakan untuk indikator: '{indikator}'.\n"
+            f"Daftar indikator yang didukung: kemiskinan, IPM, pengangguran, inflasi, PDRB, "
+            f"gini, stunting, padi, perikanan, dan lainnya."
+        )
+
+    bagian.append(
+        f"## Sumber 2: BPS Web API (Domain 1100 – Provinsi Aceh)\n"
+        f"- **Status Data**: `{bps_status}` | **Baris**: {bps_baris} | **Tahun Terbaru Terdeteksi**: {bps_periode}\n"
+        f"- **Indikator BPS**: {var_info['label'] if var_info else '-'} (var: {var_info['var'] if var_info else '-'})\n"
+        f"- **Endpoint**: `{bps_url_tampil}`\n\n"
+        f"{bps_teks if bps_teks else '_Data tidak tersedia._'}"
+    )
+
+    # ── Kesimpulan validitas ─────────────────────────────────────────────────
+    if sda_status == "valid" and bps_status == "valid":
+        # Bandingkan tahun terbaru
+        tahun_sda = re.findall(r"\b(20\d{2})\b", sda_periode + " " + sda_teks)
+        tahun_bps_list = re.findall(r"\b(20\d{2})\b", bps_periode)
+        max_sda = max(tahun_sda) if tahun_sda else "0"
+        max_bps = max(tahun_bps_list) if tahun_bps_list else "0"
+        if max_bps >= max_sda:
+            rekomendasi = f"✅ **BPS** menyediakan data hingga tahun **{max_bps}** (lebih baru atau setara). Gunakan data BPS sebagai referensi utama."
+        else:
+            rekomendasi = f"✅ **Satu Data Aceh** menyediakan data hingga tahun **{max_sda}** (lebih baru). Gunakan data portal sebagai referensi utama."
+    elif bps_status == "valid":
+        rekomendasi = "✅ Hanya **BPS** yang memiliki data valid. Gunakan data BPS."
+    elif sda_status == "valid":
+        rekomendasi = "✅ Hanya **Satu Data Aceh** yang memiliki data valid. Gunakan data portal."
+    else:
+        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini."
+
+    kesimpulan = f"---\n## Kesimpulan Perbandingan\n{rekomendasi}"
+
+    return "\n\n---\n\n".join(bagian) + "\n\n" + kesimpulan
+
 
 def main() -> None:
     """Menjalankan server lokal STDIO atau server remote SSE."""

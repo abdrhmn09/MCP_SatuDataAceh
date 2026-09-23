@@ -170,6 +170,53 @@ function bpsUrl(source: BpsSource, env: Env): string {
 
 function bpsPayloadToText(payload: unknown): string {
   const root = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+
+  // ── Format 1: Dynamic Data BPS (datacontent matriks multidimensi) ──────────
+  if ("datacontent" in root && typeof root.datacontent === "object" && root.datacontent !== null) {
+    const datacontent = root.datacontent as Record<string, number>;
+    const varList = Array.isArray(root.var) ? root.var as Record<string, unknown>[] : [{}];
+    const vervar = Array.isArray(root.vervar) ? root.vervar as Record<string, unknown>[] : [];
+    const tahunList = Array.isArray(root.tahun) ? root.tahun as Record<string, unknown>[] : [];
+    const turvar = Array.isArray(root.turvar) ? root.turvar as Record<string, unknown>[] : [{ val: 0, label: "" }];
+    const turtahun = Array.isArray(root.turtahun) ? root.turtahun as Record<string, unknown>[] : [{ val: 0, label: "Tahunan" }];
+
+    const varVal = String(varList[0]?.val ?? "");
+    const varLabel = asText(varList[0]?.label ?? "Nilai");
+    const unit = asText(varList[0]?.unit ?? "");
+
+    const rows: Record<string, string>[] = [];
+    for (const vv of vervar) {
+      for (const th of tahunList) {
+        for (const tv of turvar) {
+          for (const tt of turtahun) {
+            // turtahun harus 2 digit (zero-padded) sesuai format datacontent BPS
+            const ttVal = String(tt.val ?? "0").padStart(2, "0");
+            const key = `${vv.val}${varVal}${tv.val}${th.val}${ttVal}`;
+            if (key in datacontent) {
+              const row: Record<string, string> = {
+                kode_wilayah: String(vv.val ?? ""),
+                nama_wilayah: asText(vv.label),
+                tahun: asText(th.label),
+                indikator: varLabel,
+              };
+              if (turvar.length > 1) row.kategori = asText(tv.label);
+              if (turtahun.length > 1) row.periode = asText(tt.label);
+              row.nilai = String(datacontent[key]);
+              if (unit) row.satuan = unit;
+              rows.push(row);
+            }
+          }
+        }
+      }
+    }
+    if (rows.length > 0) {
+      const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+      const escape = (v: unknown) => `"${asText(v).replaceAll('"', '""')}"`;
+      return [columns.map(escape).join(","), ...rows.map((r) => columns.map((c) => escape(r[c])).join(","))].join("\n");
+    }
+  }
+
+  // ── Format 2: Array list (fallback / static table) ──────────────────────────
   const rows = Array.isArray(root.data) ? root.data :
     root.data && typeof root.data === "object" && Array.isArray((root.data as Record<string, unknown>).data)
       ? (root.data as Record<string, unknown>).data as unknown[] : [];
