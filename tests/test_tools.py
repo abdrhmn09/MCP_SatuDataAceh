@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from src.server import _cari_link_csv, _url_api_csv, baca_isi_csv, cari_katalog_data
+from src.server import _analisis_csv, _cari_link_csv, _cocokkan_dataset, _url_api_csv, baca_isi_csv, cari_katalog_data
 
 
 class CsvResponse:
@@ -40,6 +40,29 @@ class CsvClient:
 
 
 class ToolTests(unittest.IsolatedAsyncioTestCase):
+    def test_pencarian_kemiskinan_memprioritaskan_judul_relevan(self):
+        results = _cocokkan_dataset(
+            [
+                {"identifier": "lain", "title": "Program bantuan sosial"},
+                {"identifier": "miskin", "title": "Persentase Penduduk Miskin Aceh"},
+            ],
+            "kemiskinan",
+        )
+
+        self.assertEqual(results[0]["identifier"], "miskin")
+
+    def test_csv_header_only_diberi_status_khusus(self):
+        result = _analisis_csv("nama,nilai\n", "https://example.com/data.csv", 20)
+
+        self.assertEqual(result.status, "header_only")
+        self.assertEqual(result.row_count, 0)
+        self.assertEqual(result.column_count, 2)
+        self.assertIn("header", result.message)
+
+    def test_html_200_tidak_dianggap_csv(self):
+        result = _analisis_csv("<html><body>Not found</body></html>", "https://example.com/data.csv", 20)
+
+        self.assertEqual(result.status, "html")
     def test_url_api_csv_portal(self):
         result = _url_api_csv(
             {

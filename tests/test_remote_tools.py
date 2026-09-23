@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from src.server import FetchOutput, SearchOutput, fetch, health, search
+from src.server import CsvReadResult, FetchOutput, SearchOutput, fetch, health, search
 
 
 class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
@@ -32,7 +32,10 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
             }
         ]
         with patch("src.server.muat_katalog", new=AsyncMock(return_value=katalog)), patch(
-            "src.server.baca_isi_csv", new=AsyncMock(return_value="| nama | jumlah |")
+            "src.server._unduh_csv",
+            new=AsyncMock(
+                return_value=CsvReadResult("valid", "| nama | jumlah |", 1, 2, "https://example.com/data.csv")
+            ),
         ):
             result = await fetch("dataset-1")
 
