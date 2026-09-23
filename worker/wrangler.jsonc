@@ -7,6 +7,7 @@
   "vars": {
     "CATALOG_URL": "https://satudata.acehprov.go.id/data.json",
     "DATA_YEAR": "2025",
+    "BPS_DOMAIN": "1100",
     "CATALOG_TTL_SECONDS": "3600",
     "MAX_REQUESTS_PER_MINUTE": "60"
   }

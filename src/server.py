@@ -8,6 +8,7 @@ import os
 import re
 import time
 from collections import deque
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlparse
 from mcp.server.fastmcp import FastMCP
@@ -45,6 +46,16 @@ class FetchOutput(BaseModel):
     metadata: dict[str, object] | None = None
 
 
+@dataclass
+class CsvReadResult:
+    status: str
+    preview: str
+    row_count: int
+    column_count: int
+    source_url: str
+    message: str = ""
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
@@ -80,6 +91,8 @@ mcp = FastMCP(
 MAX_CSV_BYTES = 5 * 1024 * 1024
 MAX_HTML_BYTES = 2 * 1024 * 1024
 DEFAULT_DATA_YEAR = os.getenv("SATU_DATA_ACEH_DATA_YEAR", "2025")
+BPS_API_KEY = os.getenv("BPS_API_KEY", "")
+BPS_DOMAIN = os.getenv("BPS_DOMAIN", "1100")
 RATE_LIMIT_PER_MINUTE = _env_int("MCP_RATE_LIMIT_PER_MINUTE", 60)
 _rate_limiter = _RateLimiter(RATE_LIMIT_PER_MINUTE)
 
@@ -200,27 +213,138 @@ def _url_csv_item(item: dict[str, object]) -> str:
     return _url_api_csv(item, halaman) or halaman
 
 
+def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
+    identifier = str(item.get("identifier", "")).strip()
+    metadata = " ".join(
+        str(item.get(field, "")) for field in ("title", "description", "keyword")
+    ).lower()
+    if "kemiskinan" not in metadata and "penduduk miskin" not in metadata and identifier != "621":
+        return None
+    return {
+        "domain": BPS_DOMAIN,
+        "variable": "621",
+        "reference_url": _halaman_dataset(item),
+    }
+
+
+def _bps_url(source: dict[str, str]) -> str:
+    return (
+        "https://webapi.bps.go.id/v1/api/list/model/data/"
+        f"domain/{quote(source['domain'], safe='')}/"
+        f"var/{quote(source['variable'], safe='')}/"
+        f"key/{quote(BPS_API_KEY, safe='')}"
+    )
+
+
+def _bps_payload_to_csv(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    rows = payload.get("data", [])
+    if isinstance(rows, dict):
+        rows = rows.get("data", [])
+    if not isinstance(rows, list):
+        return ""
+    objects = [row for row in rows if isinstance(row, dict)]
+    if not objects:
+        return ""
+    columns = list(dict.fromkeys(column for row in objects for column in row))
+    frame = pd.DataFrame(objects, columns=columns)
+    return frame.to_csv(index=False)
+
+
+async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[str, str]] | None:
+    source = _bps_source(item)
+    if not source or not BPS_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+            response = await client.get(_bps_url(source))
+            response.raise_for_status()
+            teks_csv = _bps_payload_to_csv(response.json())
+        return _analisis_csv(teks_csv, _bps_url(source), 50), source
+    except (httpx.HTTPError, ValueError, TypeError) as error:
+        logger.warning("Sumber BPS gagal diproses: %s", type(error).__name__)
+        return None
+
+
 def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict[str, object]]:
-    query = query.lower()
-    hasil = []
+    query = query.lower().strip()
+    synonyms = {
+        "kemiskinan": {"kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"},
+        "miskin": {"kemiskinan", "miskin", "penduduk miskin"},
+        "bps": {"bps", "badan pusat statistik", "susenas"},
+    }
+    terms = {query}
+    for token in query.split():
+        terms.update(synonyms.get(token, {token}))
+    scored: list[tuple[int, dict[str, object]]] = []
     for item in katalog:
         publisher = item.get("publisher", {})
         nama_penerbit = publisher.get("name", "") if isinstance(publisher, dict) else ""
+        title = str(item.get("title", "")).lower()
         metadata = " ".join(
             str(value)
             for value in (
-                item.get("title", ""),
+                title,
                 item.get("description", ""),
                 item.get("keyword", []),
                 nama_penerbit,
                 item.get("identifier", ""),
             )
         ).lower()
-        if query in metadata:
-            hasil.append(item)
-        if len(hasil) >= 5:
-            break
-    return hasil
+        matched = [term for term in terms if term in metadata]
+        if matched:
+            score = len(matched) + sum(2 for term in matched if term in title)
+            scored.append((score, item))
+    scored.sort(key=lambda entry: entry[0], reverse=True)
+    return [item for _, item in scored[:5]]
+
+
+def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult:
+    teks_bersih = teks_csv.lstrip("\ufeff \r\n\t")
+    if not teks_bersih:
+        return CsvReadResult("empty", "", 0, 0, url, "File CSV tidak berisi data.")
+    if teks_bersih.startswith("<") and "html" in teks_bersih[:500].lower():
+        return CsvReadResult("html", "", 0, 0, url, "Sumber mengembalikan halaman HTML, bukan CSV.")
+
+    try:
+        df = pd.read_csv(StringIO(teks_csv))
+    except pd.errors.EmptyDataError:
+        return CsvReadResult("empty", "", 0, 0, url, "File CSV tidak berisi data.")
+    except (pd.errors.ParserError, UnicodeDecodeError, ValueError):
+        return CsvReadResult("invalid", "", 0, 0, url, "Format CSV tidak valid.")
+
+    row_count = len(df)
+    column_count = len(df.columns)
+    if row_count == 0:
+        return CsvReadResult(
+            "header_only",
+            "",
+            0,
+            column_count,
+            url,
+            "Sumber CSV hanya berisi header tanpa observasi.",
+        )
+    preview = df.head(baris_maksimal).to_markdown(index=False)
+    return CsvReadResult("valid", preview, row_count, column_count, url)
+
+
+async def _unduh_csv(url: str, baris_maksimal: int) -> CsvReadResult:
+    timeout = httpx.Timeout(30.0, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        chunks = []
+        total_bytes = 0
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                total_bytes += len(chunk)
+                if total_bytes > MAX_CSV_BYTES:
+                    return CsvReadResult(
+                        "too_large", "", 0, 0, url, "File CSV terlalu besar untuk diproses (maksimal 5 MB)."
+                    )
+                chunks.append(chunk)
+    teks_csv = b"".join(chunks).decode("utf-8-sig")
+    return _analisis_csv(teks_csv, url, baris_maksimal)
 
 
 @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
@@ -260,13 +384,35 @@ async def fetch(id: str) -> FetchOutput:
     csv_url = _url_csv_item(item)
     if not csv_url:
         raise ValueError("Dataset tidak memiliki URL CSV yang dapat diakses.")
-    text = await baca_isi_csv(csv_url, 50)
+    result = await _unduh_csv(csv_url, 50)
+    source = "Satu Data Aceh"
+    reference_source = _halaman_dataset(item)
+    if result.status != "valid":
+        bps_result = await _ambil_dari_bps(item)
+        if bps_result:
+            result, bps_source = bps_result
+            source = "BPS"
+            reference_source = bps_source["reference_url"]
+            csv_url = result.source_url
+    text = result.preview if result.status == "valid" else result.message
+    publisher = item.get("publisher", {})
     return FetchOutput(
         id=id,
         title=str(item.get("title", "Dataset Aceh")),
         text=text,
         url=_halaman_dataset(item) or csv_url,
-        metadata={"publisher": item.get("publisher", {}), "csv_url": csv_url},
+        metadata={
+            "publisher": publisher,
+            "csv_url": csv_url,
+            "landing_url": _halaman_dataset(item),
+            "source": source,
+            "reference_source": reference_source,
+            "period": item.get("modified") or item.get("issued") or "",
+            "status": result.status,
+            "row_count": result.row_count,
+            "column_count": result.column_count,
+            "message": result.message,
+        },
     )
 
 @mcp.tool()
@@ -292,63 +438,22 @@ async def cari_katalog_data(kata_kunci: str) -> str:
         return "Sistem sedang tidak dapat mengakses katalog data.json dari portal."
         
     hasil_pencarian = []
-    
-    for item in katalog:
+    for item in _cocokkan_dataset(katalog, kata_kunci):
         judul = item.get("title", "")
-        deskripsi = item.get("description", "")
-        keyword = item.get("keyword", [])
         publisher = item.get("publisher", {})
-        nama_penerbit = publisher.get("name", "") if isinstance(publisher, dict) else ""
-        bidang_pencarian = " ".join(
-            str(value)
-            for value in (judul, deskripsi, keyword, nama_penerbit, item.get("identifier", ""))
-        ).lower()
-        
-        # Pencarian case-insensitive pada metadata utama dataset.
-        if kata_kunci.lower() in bidang_pencarian:
-            
-            # Mencari tautan CSV atau halaman dataset di dalam distribution.
-            link_csv = "Tidak tersedia format CSV"
-            halaman_dataset = item.get("landingPage", "")
-            distribusi = item.get("distribution", [])
-            if not isinstance(distribusi, list):
-                distribusi = []
-            for distro in distribusi:
-                if not isinstance(distro, dict):
-                    continue
-                media_type = str(distro.get("mediaType", "")).lower()
-                format_tipe = str(distro.get("format", "")).lower()
-                
-                if "csv" in media_type or "csv" in format_tipe:
-                    link_csv = distro.get("downloadURL") or distro.get("accessURL") or link_csv
-                    break
-                if not halaman_dataset:
-                    halaman_dataset = distro.get("accessURL", "")
-
-            if link_csv == "Tidak tersedia format CSV" and halaman_dataset:
-                link_csv = (
-                    _url_api_csv(item, halaman_dataset)
-                    or await _cari_link_csv(halaman_dataset)
-                    or halaman_dataset
-                )
-            
-            penerbit = (
-                publisher.get("name", "Instansi Tidak Diketahui")
-                if isinstance(publisher, dict)
-                else "Instansi Tidak Diketahui"
-            )
-            
-            # Memformat satu entri hasil pencarian
-            entri = (
-                f"- **Judul Dataset**: {judul}\n"
-                f"  **Instansi**: {penerbit}\n"
-                f"  **Tautan CSV**: {link_csv}"
-            )
-            hasil_pencarian.append(entri)
-            
-            # Batasi hasil (Top 5) agar tidak melampaui batas token AI
-            if len(hasil_pencarian) >= 5:
-                break
+        link_csv = _url_csv_item(item)
+        if link_csv == _halaman_dataset(item):
+            link_csv = await _cari_link_csv(link_csv) or link_csv
+        penerbit = (
+            publisher.get("name", "Instansi Tidak Diketahui")
+            if isinstance(publisher, dict)
+            else "Instansi Tidak Diketahui"
+        )
+        hasil_pencarian.append(
+            f"- **Judul Dataset**: {judul}\n"
+            f"  **Instansi**: {penerbit}\n"
+            f"  **Tautan CSV**: {link_csv}"
+        )
                 
     if not hasil_pencarian:
         return f"Tidak ditemukan dataset yang cocok dengan kata kunci: '{kata_kunci}'"
@@ -375,31 +480,18 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
     baris_maksimal = max(1, min(baris_maksimal, 50))
 
     try:
-        timeout = httpx.Timeout(30.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            chunks = []
-            total_bytes = 0
-            async with client.stream("GET", url) as response:
-                response.raise_for_status()
-                async for chunk in response.aiter_bytes():
-                    total_bytes += len(chunk)
-                    if total_bytes > MAX_CSV_BYTES:
-                        return "File CSV terlalu besar untuk diproses (maksimal 5 MB)."
-                    chunks.append(chunk)
-
-            # Gunakan pandas untuk membaca dan memformat CSV menjadi bentuk tabel teks (Markdown)
-            teks_csv = b"".join(chunks).decode("utf-8-sig")
-            df = pd.read_csv(StringIO(teks_csv))
-            
-            # Konversi beberapa baris teratas ke format Markdown
-            tabel_markdown = df.head(baris_maksimal).to_markdown(index=False)
-            
-            info_tambahan = f"\n\n*(Catatan: Menampilkan {min(len(df), baris_maksimal)} baris pertama dari total {len(df)} baris data)*"
-            return tabel_markdown + info_tambahan
+        result = await _unduh_csv(url, baris_maksimal)
+        if result.status != "valid":
+            return f"Data tidak tersedia ({result.status}): {result.message}"
+        info_tambahan = (
+            f"\n\n*(Catatan: Menampilkan {min(result.row_count, baris_maksimal)} "
+            f"baris pertama dari total {result.row_count} baris data)*"
+        )
+        return result.preview + info_tambahan
             
     except httpx.HTTPError:
         return "Gagal mengunduh file CSV dari URL tersebut."
-    except (pd.errors.ParserError, UnicodeDecodeError, ValueError):
+    except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError, ValueError):
         return "File yang diunduh bukan CSV yang valid atau encoding-nya tidak didukung."
     except ImportError:
         return "Format tabel belum tersedia karena dependency tabulate belum terpasang."

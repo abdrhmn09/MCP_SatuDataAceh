@@ -7,6 +7,8 @@ interface Env {
   DATA_YEAR: string;
   CATALOG_TTL_SECONDS: string;
   MAX_REQUESTS_PER_MINUTE: string;
+  BPS_API_KEY?: string;
+  BPS_DOMAIN?: string;
 }
 
 interface Dataset {
@@ -29,6 +31,20 @@ interface SearchResult {
   id: string;
   title: string;
   url: string;
+}
+
+interface CsvAnalysis {
+  status: "valid" | "header_only" | "empty" | "html";
+  text: string;
+  rowCount: number;
+  columnCount: number;
+  message?: string;
+}
+
+interface BpsSource {
+  domain: string;
+  variable: string;
+  referenceUrl: string;
 }
 
 const MAX_CSV_BYTES = 5 * 1024 * 1024;
@@ -93,6 +109,13 @@ function datasetPage(dataset: Dataset): string {
   return "";
 }
 
+export function datasetYear(dataset: Dataset, env: Env): string {
+  const metadata = [dataset.title, dataset.description, dataset.issued, dataset.modified]
+    .map(asText)
+    .join(" ");
+  return metadata.match(/\b20\d{2}\b/)?.[0] ?? env.DATA_YEAR ?? "2025";
+}
+
 function csvUrl(dataset: Dataset, env: Env): string {
   const page = datasetPage(dataset);
   try {
@@ -100,7 +123,7 @@ function csvUrl(dataset: Dataset, env: Env): string {
     if (hostname === "satudata.acehprov.go.id") {
       const id = encodeURIComponent(datasetId(dataset));
       if (id) {
-        return `https://satudata.acehprov.go.id/api/datasets/${id}/datasources/download?tahun=${encodeURIComponent(env.DATA_YEAR || "2025")}`;
+        return `https://satudata.acehprov.go.id/api/datasets/${id}/datasources/download?tahun=${encodeURIComponent(datasetYear(dataset, env))}`;
       }
     }
   } catch {
@@ -120,6 +143,46 @@ function csvUrl(dataset: Dataset, env: Env): string {
     }
   }
   return page;
+}
+
+function bpsSource(dataset: Dataset, env: Env): BpsSource | null {
+  const title = `${asText(dataset.title)} ${asText(dataset.description)} ${asText(dataset.keyword)}`.toLowerCase();
+  const identifier = datasetId(dataset);
+  if (!title.includes("kemiskinan") && !title.includes("penduduk miskin") && identifier !== "621") {
+    return null;
+  }
+  const domain = env.BPS_DOMAIN || "1100";
+  return {
+    domain,
+    variable: identifier === "621" ? "621" : "621",
+    referenceUrl: datasetPage(dataset),
+  };
+}
+
+function bpsUrl(source: BpsSource, env: Env): string {
+  return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
+}
+
+function bpsPayloadToText(payload: unknown): string {
+  const root = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const rows = Array.isArray(root.data) ? root.data :
+    root.data && typeof root.data === "object" && Array.isArray((root.data as Record<string, unknown>).data)
+      ? (root.data as Record<string, unknown>).data as unknown[] : [];
+  if (!rows.length) return "";
+  const objects = rows.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"));
+  if (!objects.length) return "";
+  const columns = [...new Set(objects.flatMap((row) => Object.keys(row)))];
+  const escape = (value: unknown) => `"${asText(value).replaceAll('"', '""')}"`;
+  return [columns.map(escape).join(","), ...objects.map((row) => columns.map((column) => escape(row[column])).join(","))].join("\n");
+}
+
+async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analysis: CsvAnalysis; source: BpsSource } | null> {
+  const source = bpsSource(dataset, env);
+  if (!source || !env.BPS_API_KEY) return null;
+  const response = await fetch(bpsUrl(source, env));
+  if (!response.ok) throw new Error(`BPS request failed: ${response.status}`);
+  const text = bpsPayloadToText(await response.json());
+  return { analysis: analyzeCsvText(text, MAX_ROWS), source };
 }
 
 async function loadCatalog(env: Env): Promise<Dataset[]> {
@@ -152,10 +215,27 @@ function searchableText(dataset: Dataset): string {
 export function searchDatasets(datasets: Dataset[], query: string): SearchResult[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
+  const synonyms: Record<string, string[]> = {
+    kemiskinan: ["kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"],
+    miskin: ["kemiskinan", "miskin", "penduduk miskin"],
+    bps: ["bps", "badan pusat statistik", "susenas"],
+  };
+  const terms = new Set([needle]);
+  for (const token of needle.split(/\s+/)) {
+    for (const synonym of synonyms[token] ?? [token]) terms.add(synonym);
+  }
   return datasets
-    .filter((dataset) => searchableText(dataset).includes(needle))
+    .map((dataset) => {
+      const metadata = searchableText(dataset);
+      const title = datasetTitle(dataset).toLowerCase();
+      const matched = [...terms].filter((term) => metadata.includes(term));
+      const score = matched.length + matched.filter((term) => title.includes(term)).length * 2;
+      return { dataset, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
     .slice(0, 5)
-    .map((dataset) => ({
+    .map(({ dataset }) => ({
       id: datasetId(dataset),
       title: datasetTitle(dataset),
       url: datasetPage(dataset) || csvUrl(dataset, { DATA_YEAR: "2025" } as Env),
@@ -168,7 +248,24 @@ export function parseCsvRows(text: string, maxRows: number): string {
   return lines.slice(0, Math.max(1, Math.min(maxRows, MAX_ROWS)) + 1).join("\n");
 }
 
-async function fetchDatasetText(dataset: Dataset, env: Env): Promise<string> {
+export function analyzeCsvText(text: string, maxRows: number): CsvAnalysis {
+  const cleaned = text.replace(/^\uFEFF/, "").trim();
+  if (!cleaned) {
+    return { status: "empty", text: "", rowCount: 0, columnCount: 0, message: "File CSV tidak berisi data." };
+  }
+  if (cleaned.startsWith("<") && cleaned.slice(0, 500).toLowerCase().includes("html")) {
+    return { status: "html", text: "", rowCount: 0, columnCount: 0, message: "Sumber mengembalikan HTML, bukan CSV." };
+  }
+  const lines = cleaned.split(/\r?\n/).filter(Boolean);
+  const columnCount = lines[0].split(",").length;
+  const rowCount = Math.max(0, lines.length - 1);
+  if (rowCount === 0) {
+    return { status: "header_only", text: "", rowCount, columnCount, message: "Sumber CSV hanya berisi header tanpa observasi." };
+  }
+  return { status: "valid", text: parseCsvRows(cleaned, maxRows), rowCount, columnCount };
+}
+
+async function fetchDatasetText(dataset: Dataset, env: Env): Promise<CsvAnalysis> {
   const url = csvUrl(dataset, env);
   if (!isPublicHttpsUrl(url)) throw new Error("Dataset URL is not a public HTTPS URL");
   const response = await fetch(url);
@@ -177,7 +274,7 @@ async function fetchDatasetText(dataset: Dataset, env: Env): Promise<string> {
   if (contentLength > MAX_CSV_BYTES) throw new Error("CSV exceeds the 5 MB limit");
   const body = await response.arrayBuffer();
   if (body.byteLength > MAX_CSV_BYTES) throw new Error("CSV exceeds the 5 MB limit");
-  return parseCsvRows(new TextDecoder("utf-8").decode(body), MAX_ROWS);
+  return analyzeCsvText(new TextDecoder("utf-8").decode(body), MAX_ROWS);
 }
 
 function createServer(env: Env): McpServer {
@@ -207,13 +304,34 @@ function createServer(env: Env): McpServer {
       const datasets = await loadCatalog(env);
       const dataset = datasets.find((item) => datasetId(item) === id);
       if (!dataset) throw new Error("Dataset not found");
-      const text = await fetchDatasetText(dataset, env);
+      let analysis = await fetchDatasetText(dataset, env);
+      let source = "Satu Data Aceh";
+      let referenceSource = datasetPage(dataset);
+      if (analysis.status !== "valid") {
+        const bps = await fetchFromBps(dataset, env);
+        if (bps) {
+          analysis = bps.analysis;
+          source = "BPS";
+          referenceSource = bps.source.referenceUrl;
+        }
+      }
       const payload = {
         id,
         title: datasetTitle(dataset),
-        text,
+        text: analysis.text || analysis.message || "",
         url: datasetPage(dataset) || csvUrl(dataset, env),
-        metadata: { publisher: dataset.publisher ?? null },
+        metadata: {
+          publisher: dataset.publisher ?? null,
+          source,
+          reference_source: referenceSource,
+          status: analysis.status,
+          row_count: analysis.rowCount,
+          column_count: analysis.columnCount,
+          source_url: csvUrl(dataset, env),
+          landing_url: datasetPage(dataset),
+          period: dataset.modified ?? dataset.issued ?? "",
+          message: analysis.message ?? "",
+        },
       };
       return {
         content: [{ type: "text", text: JSON.stringify(payload) }],

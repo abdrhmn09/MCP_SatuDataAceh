@@ -32,6 +32,10 @@ Cari data penduduk berdasarkan kabupaten/kota di Aceh.
 
 AI akan menggunakan MCP untuk mencari dataset, kemudian membaca data apabila URL CSV tersedia.
 
+Jika data Satu Data Aceh hanya berisi metadata atau header tanpa angka, MCP dapat mencoba mengambil data dari BPS untuk topik yang sudah dipetakan, seperti kemiskinan. Hasil akan mencantumkan sumber data yang digunakan. Fallback BPS hanya aktif jika pengelola server sudah memasang API key BPS.
+
+MCP memeriksa isi sumber sebelum menampilkan hasil. Jika sumber hanya berisi header, kosong, atau mengembalikan halaman HTML, hasil akan ditandai sebagai data yang belum tersedia dan tidak dianggap sebagai angka resmi.
+
 ## Pemasangan di ChatGPT
 
 Ketersediaan fitur remote MCP bergantung pada akun dan pengaturan workspace ChatGPT.
@@ -165,9 +169,12 @@ Hasil yang benar:
 ## Batasan
 
 - Data berasal dari Portal Satu Data Aceh.
+- Beberapa dataset dapat memiliki metadata, tetapi belum memiliki observasi untuk periode terbaru. Dalam kondisi ini MCP akan menampilkan status sumber dan periode yang tersedia.
+- Angka dari BPS hanya dapat dianggap sebagai hasil resmi jika tersedia tautan halaman atau file BPS yang dapat diverifikasi. MCP tidak menggunakan API BPS yang membutuhkan token.
 - Hasil pencarian dibatasi agar respons tetap ringkas.
 - Pembacaan CSV menampilkan sebagian data, bukan seluruh dataset.
 - Server tidak menggunakan autentikasi dan hanya ditujukan untuk data publik.
+- Fallback BPS membutuhkan API key yang dipasang oleh pengelola server, bukan oleh pengguna MCP.
 - Ketersediaan remote MCP dapat berbeda berdasarkan akun, versi aplikasi, dan kebijakan provider AI.
 
 ## Sumber Data
