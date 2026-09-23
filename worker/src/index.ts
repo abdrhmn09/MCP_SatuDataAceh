@@ -314,7 +314,18 @@ function createServer(env: Env): McpServer {
       const datasets = await loadCatalog(env);
       const dataset = datasets.find((item) => datasetId(item) === id);
       if (!dataset) throw new Error("Dataset not found");
-      let analysis = await fetchDatasetText(dataset, env);
+      let analysis: CsvAnalysis;
+      try {
+        analysis = await fetchDatasetText(dataset, env);
+      } catch (error) {
+        analysis = {
+          status: "empty",
+          text: "",
+          rowCount: 0,
+          columnCount: 0,
+          message: error instanceof Error ? error.message : "Gagal mengunduh file CSV",
+        };
+      }
       let source = "Satu Data Aceh";
       let referenceSource = datasetPage(dataset);
       let sourceUrl = csvUrl(dataset, env);

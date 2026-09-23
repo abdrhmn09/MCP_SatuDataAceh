@@ -24,6 +24,14 @@ class ServerValidationTests(unittest.IsolatedAsyncioTestCase):
         result = await baca_isi_csv("https://example.com/data.csv", "20")
         self.assertIn("bilangan bulat", result)
 
+    def test_entrypoint_main_tersedia(self):
+        import src.main as src_main
+        import src.__main__ as src_pkg_main
+        from src.server import main as server_main
+
+        self.assertIs(src_main.main, server_main)
+        self.assertIs(src_pkg_main.main, server_main)
+
 
 if __name__ == "__main__":
     unittest.main()

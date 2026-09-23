@@ -394,6 +394,8 @@ async def search(query: str) -> SearchOutput:
 @mcp.tool()
 async def fetch(id: str) -> FetchOutput:
     """Mengambil isi ringkas CSV dataset berdasarkan identifier hasil search."""
+    if not await _rate_limiter.allow():
+        raise ValueError("Batas permintaan tercapai. Coba lagi beberapa saat.")
     katalog = await muat_katalog()
     item = next((entry for entry in katalog if str(entry.get("identifier", "")) == id), None)
     if item is None:
@@ -401,7 +403,17 @@ async def fetch(id: str) -> FetchOutput:
     csv_url = _url_csv_item(item)
     if not csv_url:
         raise ValueError("Dataset tidak memiliki URL CSV yang dapat diakses.")
-    result = await _unduh_csv(csv_url, 50)
+    try:
+        result = await _unduh_csv(csv_url, 50)
+    except httpx.HTTPError as error:
+        logger.warning("Gagal mengunduh CSV dataset %s (%s): %s", id, csv_url, error)
+        result = CsvReadResult(
+            "failed", "", 0, 0, csv_url, "Gagal mengunduh file CSV dari URL tersebut."
+        )
+    except (UnicodeDecodeError, ValueError) as error:
+        logger.warning("Format CSV tidak valid untuk dataset %s (%s): %s", id, csv_url, error)
+        result = CsvReadResult("invalid", "", 0, 0, csv_url, "Format CSV tidak valid.")
+
     source = "Satu Data Aceh"
     reference_source = _halaman_dataset(item)
     if result.status != "valid":
