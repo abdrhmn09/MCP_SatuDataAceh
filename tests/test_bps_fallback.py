@@ -26,7 +26,7 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_bps_mapping_dari_indicator_map_bawaan(self):
         """BPS_INDICATOR_MAP bawaan dapat ditemukan langsung dari identifier Satu Data Aceh."""
-        # 0116d97b adalah identifier kemiskinan yang sudah dipetakan ke var 621
+        # 0116d97b adalah identifier kemiskinan yang sudah dipetakan ke var 42
         source = server._bps_source(
             {
                 "identifier": "0116d97b-1b4a-4c6a-a243-33833660fb85",
@@ -35,7 +35,7 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         self.assertIsNotNone(source)
-        self.assertEqual(source["variable"], "621")
+        self.assertEqual(source["variable"], "42")
         self.assertEqual(source["domain"], "1100")
 
     async def test_bps_mapping_tidak_menebak_uuid(self):
@@ -54,7 +54,7 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         self.assertIsNotNone(source)
-        self.assertEqual(source["variable"], "498")
+        self.assertEqual(source["variable"], "245")
 
     async def test_bps_mapping_pengangguran_tersedia(self):
         """TPT terpetakan di BPS_INDICATOR_MAP."""
@@ -66,7 +66,7 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         self.assertIsNotNone(source)
-        self.assertEqual(source["variable"], "529")
+        self.assertEqual(source["variable"], "206")
 
 
 class BpsParserTests(unittest.TestCase):
@@ -77,22 +77,19 @@ class BpsParserTests(unittest.TestCase):
         return {
             "status": "OK",
             "data-availability": "available",
-            "var": [{"val": 621, "label": "Persentase Penduduk Miskin", "unit": "Persen"}],
+            "var": [{"val": 42, "label": "Persentase Penduduk Miskin", "unit": "Persen"}],
             "vervar": [
                 {"val": 1171, "label": "Banda Aceh"},
                 {"val": 1101, "label": "Simeulue"},
             ],
             "tahun": [
-                {"val": 141, "label": "2023"},
-                {"val": 142, "label": "2024"},
+                {"val": 124, "label": "2024"},
             ],
             "turvar": [{"val": 0, "label": ""}],
             "turtahun": [{"val": 0, "label": "Tahunan"}],
             "datacontent": {
-                "1171621014100": 7.12,
-                "1171621014200": 7.04,
-                "1101621014100": 18.23,
-                "1101621014200": 17.95,
+                "11714201240": 7.12,
+                "11014201240": 17.69,
             },
         }
 
@@ -102,7 +99,7 @@ class BpsParserTests(unittest.TestCase):
         self.assertIn("Banda Aceh", csv)
         self.assertIn("Simeulue", csv)
         self.assertIn("7.12", csv)
-        self.assertIn("18.23", csv)
+        self.assertIn("17.69", csv)
 
     def test_parser_datacontent_memiliki_kolom_yang_benar(self):
         payload = self._buat_payload_bps()
@@ -119,8 +116,8 @@ class BpsParserTests(unittest.TestCase):
         payload = self._buat_payload_bps()
         csv = bps_payload_ke_csv(payload)
         df = pd.read_csv(io.StringIO(csv))
-        # 2 wilayah x 2 tahun = 4 baris
-        self.assertEqual(len(df), 4)
+        # 2 wilayah = 2 baris
+        self.assertEqual(len(df), 2)
 
     def test_parser_payload_tidak_valid_mengembalikan_string_kosong(self):
         self.assertEqual(bps_payload_ke_csv(None), "")
@@ -140,34 +137,34 @@ class BpsKeywordTests(unittest.TestCase):
     def test_kata_kunci_ipm_ditemukan(self):
         result = cari_var_bps_dari_kata_kunci("ipm")
         self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "498")
+        self.assertEqual(result["var"], "245")
 
     def test_kata_kunci_kemiskinan_ditemukan(self):
         result = cari_var_bps_dari_kata_kunci("kemiskinan")
         self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "621")
+        self.assertEqual(result["var"], "42")
 
     def test_kata_kunci_pengangguran_ditemukan(self):
         result = cari_var_bps_dari_kata_kunci("pengangguran")
         self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "529")
+        self.assertEqual(result["var"], "206")
 
     def test_kata_kunci_pendidikan_tidak_mencocokkan_ikan(self):
-        """Pencarian 'pendidikan' harus mencocokkan indikator pendidikan (var 490), BUKAN 'ikan' (var 1398)."""
+        """Pencarian 'pendidikan' harus mencocokkan indikator pendidikan (var 245), BUKAN 'ikan' (var 204)."""
         result = cari_var_bps_dari_kata_kunci("pendidikan")
         self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "490")
-        self.assertNotEqual(result["var"], "1398")
+        self.assertEqual(result["var"], "245")
+        self.assertNotEqual(result["var"], "204")
 
     def test_kata_kunci_ikan_tetap_mencocokkan_perikanan(self):
         result = cari_var_bps_dari_kata_kunci("ikan")
         self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "1398")
+        self.assertEqual(result["var"], "204")
 
     def test_kata_kunci_guru_dan_sekolah_mencocokkan_pendidikan(self):
-        self.assertEqual(cari_var_bps_dari_kata_kunci("guru")["var"], "490")
-        self.assertEqual(cari_var_bps_dari_kata_kunci("sekolah")["var"], "490")
-        self.assertEqual(cari_var_bps_dari_kata_kunci("murid")["var"], "490")
+        self.assertEqual(cari_var_bps_dari_kata_kunci("guru")["var"], "245")
+        self.assertEqual(cari_var_bps_dari_kata_kunci("sekolah")["var"], "245")
+        self.assertEqual(cari_var_bps_dari_kata_kunci("murid")["var"], "245")
 
     def test_indicator_map_mencakup_minimal_10_indikator(self):
         self.assertGreaterEqual(len(BPS_INDICATOR_MAP), 10)

@@ -179,38 +179,29 @@ export function bpsSource(dataset: Dataset, env: Env): BpsSource | null {
   };
 }
 
-export function bpsUrl(source: BpsSource, env: Env): string {
-  return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
+export function bpsUrl(source: BpsSource, env: Env, thParam: string = "124"): string {
+  return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}/th/${encodeURIComponent(thParam)}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
 }
 
 export async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analysis: CsvAnalysis; source: BpsSource } | null> {
   const source = bpsSource(dataset, env);
   if (!source || !env.BPS_API_KEY) return null;
-  try {
-    const response = await fetch(bpsUrl(source, env));
-    if (!response.ok) return null;
-    const payload = await response.json();
-    const diag = parseBpsDiagnostics(payload);
-    if (!diag.ok || !diag.dataAvailable) {
-      return {
-        analysis: {
-          status: "empty",
-          text: "",
-          preview: "",
-          rowCount: 0,
-          columnCount: 0,
-          message: `BPS Fallback: ${diag.message}`,
-        },
-        source,
-      };
+  const thCandidates = ["124", "123", "122"];
+  for (const th of thCandidates) {
+    try {
+      const response = await fetch(bpsUrl(source, env, th));
+      if (!response.ok) continue;
+      const payload = await response.json();
+      const diag = parseBpsDiagnostics(payload);
+      if (!diag.ok || !diag.dataAvailable) continue;
+      const text = bpsPayloadToText(payload);
+      if (!text) continue;
+      return { analysis: analyzeCsvText(text, MAX_ROWS), source };
+    } catch (error) {
+      console.error("BPS fallback failed for th=" + th, error instanceof Error ? error.message : "unknown error");
     }
-    const text = bpsPayloadToText(payload);
-    if (!text) return null;
-    return { analysis: analyzeCsvText(text, MAX_ROWS), source };
-  } catch (error) {
-    console.error("BPS fallback failed", error instanceof Error ? error.message : "unknown error");
-    return null;
   }
+  return null;
 }
 
 export async function fetchFromBpsDirect(
@@ -218,6 +209,7 @@ export async function fetchFromBpsDirect(
   domain: string,
   env: Env,
   maxRows: number = MAX_ROWS,
+  preferredTh?: string,
 ): Promise<{ analysis: CsvAnalysis; url: string; diagnostic?: string } | null> {
   if (!env.BPS_API_KEY) {
     return {
@@ -229,79 +221,55 @@ export async function fetchFromBpsDirect(
         columnCount: 0,
         message: "BPS_API_KEY belum dikonfigurasi. Daftarkan key Anda via secret Cloudflare Worker: npx wrangler secret put BPS_API_KEY",
       },
-      url: `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/key/***/`,
+      url: `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/124/key/***/`,
       diagnostic: "API Key belum disetel. Jalankan: npx wrangler secret put BPS_API_KEY",
     };
   }
-  const url = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/key/${encodeURIComponent(env.BPS_API_KEY)}/`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
+  const thCandidates = preferredTh ? [preferredTh, "124", "123"] : ["124", "123", "122"];
+  let lastDiag = "Data tidak ditemukan.";
+  let lastUrl = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/124/key/***/`;
+
+  for (const th of thCandidates) {
+    const url = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/${encodeURIComponent(th)}/key/${encodeURIComponent(env.BPS_API_KEY)}/`;
+    lastUrl = url;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        lastDiag = `HTTP ${response.status}: ${response.statusText}`;
+        continue;
+      }
+      const payload = await response.json();
+      const diag = parseBpsDiagnostics(payload);
+      lastDiag = diag.message;
+      if (!diag.ok || !diag.dataAvailable) {
+        continue;
+      }
+      const text = bpsPayloadToText(payload);
+      if (!text) {
+        continue;
+      }
       return {
-        analysis: {
-          status: "empty",
-          text: "",
-          preview: "",
-          rowCount: 0,
-          columnCount: 0,
-          message: `Permintaan ke BPS Web API gagal dengan status HTTP ${response.status}`,
-        },
-        url,
-        diagnostic: `HTTP ${response.status}: ${response.statusText}`,
-      };
-    }
-    const payload = await response.json();
-    const diag = parseBpsDiagnostics(payload);
-    if (!diag.ok || !diag.dataAvailable) {
-      return {
-        analysis: {
-          status: "empty",
-          text: "",
-          preview: "",
-          rowCount: 0,
-          columnCount: 0,
-          message: `BPS API: ${diag.message}`,
-        },
+        analysis: analyzeCsvText(text, maxRows),
         url,
         diagnostic: diag.message,
       };
+    } catch (error) {
+      lastDiag = error instanceof Error ? error.message : "unknown network error";
     }
-    const text = bpsPayloadToText(payload);
-    if (!text) {
-      return {
-        analysis: {
-          status: "empty",
-          text: "",
-          preview: "",
-          rowCount: 0,
-          columnCount: 0,
-          message: `BPS API: Format data tidak dapat diuraikan (${diag.message})`,
-        },
-        url,
-        diagnostic: diag.message,
-      };
-    }
-    return {
-      analysis: analyzeCsvText(text, maxRows),
-      url,
-      diagnostic: diag.message,
-    };
-  } catch (error) {
-    const errStr = error instanceof Error ? error.message : "unknown network error";
-    console.error("Direct BPS fetch failed", errStr);
-    return {
-      analysis: {
-        status: "empty",
-        text: "",
-        preview: "",
-        rowCount: 0,
-        columnCount: 0,
-        message: `Koneksi ke BPS API gagal: ${errStr}`,
-      },
-      url,
-      diagnostic: errStr,
-    };
   }
+
+  return {
+    analysis: {
+      status: "empty",
+      text: "",
+      preview: "",
+      rowCount: 0,
+      columnCount: 0,
+      message: `BPS API: ${lastDiag}`,
+    },
+    url: lastUrl,
+    diagnostic: lastDiag,
+  };
 }
 
 export async function loadCatalog(env: Env): Promise<Dataset[]> {
@@ -810,8 +778,14 @@ export function createServer(env: Env): McpServer {
       }
 
       if (varInfo) {
-        bpsUrlTampil = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${domain}/var/${varInfo.var}/key/***`;
-        const bpsResult = await fetchFromBpsDirect(varInfo.var, domain, env, 20);
+        bpsUrlTampil = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${domain}/var/${varInfo.var}/th/124/key/***`;
+        const bpsResult = await fetchFromBpsDirect(
+          varInfo.var,
+          domain,
+          env,
+          20,
+          (varInfo as { defaultTh?: string }).defaultTh,
+        );
         if (bpsResult) {
           const resultBps = bpsResult.analysis;
           bpsStatus = resultBps.status;

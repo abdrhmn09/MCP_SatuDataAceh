@@ -29,100 +29,114 @@ logger = logging.getLogger(__name__)
 BPS_INDICATOR_MAP: dict[str, dict[str, str]] = {
     # ── Kemiskinan ──────────────────────────────────────────────────────────
     "0116d97b-1b4a-4c6a-a243-33833660fb85": {
-        "var": "621",
+        "var": "42",
         "label": "Persentase Penduduk Miskin Aceh Menurut Kabupaten/Kota",
         "category": "kemiskinan",
+        "defaultTh": "124",
     },
     "afefeee7-2dbb-4ab8-aa2c-71610fc5fdb6": {
-        "var": "2212",
-        "label": "Persentase Penduduk Miskin Ekstrem",
+        "var": "41",
+        "label": "Jumlah Penduduk Miskin Menurut Kabupaten/Kota",
         "category": "kemiskinan",
+        "defaultTh": "124",
     },
-    # ── Pembangunan Manusia ─────────────────────────────────────────────────
+    # ── Pembangunan Manusia & Pendidikan ─────────────────────────────────────
     "78794e4b-2bbe-45ef-abd1-0a65c2e98702": {
-        "var": "498",
-        "label": "Indeks Pembangunan Manusia (IPM)",
-        "category": "ipm",
+        "var": "245",
+        "label": "Rata-rata Lama Sekolah (RLS) Menurut Kabupaten/Kota",
+        "category": "pendidikan",
+        "defaultTh": "124",
     },
     "2414165c-27b1-41a1-8229-0a51a128636d": {
-        "var": "498",
-        "label": "IPM Berdasarkan Jenis Kelamin",
-        "category": "ipm",
+        "var": "245",
+        "label": "Rata-rata Lama Sekolah (RLS)",
+        "category": "pendidikan",
+        "defaultTh": "124",
+    },
+    "f2585d70-70d1-49f9-8c78-6750a46e1780": {
+        "var": "245",
+        "label": "Rata-rata Lama Sekolah Provinsi Aceh Menurut Kabupaten/Kota",
+        "category": "pendidikan",
+        "defaultTh": "124",
+    },
+    "6cab69b8-d936-4f8a-b5a1-ea1fb45589e9": {
+        "var": "245",
+        "label": "Rata-rata Lama Sekolah (RLS) BPS Aceh",
+        "category": "pendidikan",
+        "defaultTh": "124",
     },
     # ── Ketenagakerjaan ─────────────────────────────────────────────────────
     "97e549de-0a20-452a-9948-455abe2532a8": {
-        "var": "529",
-        "label": "Tingkat Pengangguran Terbuka (TPT)",
+        "var": "206",
+        "label": "Tingkat Pengangguran Terbuka (TPT) Menurut Kabupaten/Kota",
         "category": "ketenagakerjaan",
+        "defaultTh": "124",
     },
     # ── Ekonomi & PDRB ─────────────────────────────────────────────────────
     "22d3b2b0-8c0e-46cb-915d-7780fd4e1158": {
-        "var": "199",
+        "var": "204",
         "label": "Laju Pertumbuhan Ekonomi Aceh",
         "category": "pdrb",
+        "defaultTh": "124",
     },
     "95ceff6a-c0d9-4ef5-b6cb-86eee4764833": {
-        "var": "786",
-        "label": "PDRB Per Kapita Provinsi Aceh",
+        "var": "397",
+        "label": "PDRB Tahunan Atas Dasar Harga Berlaku Provinsi Aceh",
         "category": "pdrb",
+        "defaultTh": "124",
     },
     "bfe0cc05-78ff-46f2-9329-c943863e5c50": {
-        "var": "199",
-        "label": "Kontribusi Sektor Perikanan Terhadap PDRB",
+        "var": "204",
+        "label": "Pertumbuhan PDRB Provinsi Aceh",
         "category": "pdrb",
+        "defaultTh": "124",
     },
     # ── Harga & Inflasi ─────────────────────────────────────────────────────
     "e8c8605b-5ce1-4637-be23-9108837e89c9": {
-        "var": "1400",
+        "var": "564",
         "label": "Tingkat Inflasi Tahun ke Tahun Provinsi Aceh",
         "category": "inflasi",
+        "defaultTh": "124",
     },
     # ── Ketimpangan ─────────────────────────────────────────────────────────
     "0c63d096-1671-4afd-94b5-39048d378e56": {
-        "var": "631",
+        "var": "60",
         "label": "Rasio Gini Provinsi Aceh",
         "category": "ketimpangan",
-    },
-    # ── Gizi & Kesehatan ────────────────────────────────────────────────────
-    "1d4d7e1a-9d53-45a4-a11e-dc24d6c8cf25": {
-        "var": "2212",
-        "label": "Prevalensi Stunting Balita Aceh",
-        "category": "kesehatan",
-    },
-    "81dc3ba5-e050-47fe-846b-298ca2977216": {
-        "var": "529",
-        "label": "Persentase Fasyankes yang Terpenuhi SDM Kesehatan",
-        "category": "kesehatan",
-    },
-    # ── Pendidikan ──────────────────────────────────────────────────────────
-    "f2585d70-70d1-49f9-8c78-6750a46e1780": {
-        "var": "490",
-        "label": "Rata-rata Lama Sekolah Provinsi Aceh",
-        "category": "pendidikan",
+        "defaultTh": "124",
     },
     # ── Pertanian Tanaman Pangan ────────────────────────────────────────────
     "d8c8a7f0-d329-4872-8546-294fd6267c7b": {
-        "var": "1321",
+        "var": "574",
         "label": "Produksi Padi Menurut Kabupaten/Kota",
         "category": "pertanian",
-    },
-    # ── Hortikultura ────────────────────────────────────────────────────────
-    "21cece89-360f-480d-a3e9-a841a79e752d": {
-        "var": "1350",
-        "label": "Produksi Tanaman Sayur-Sayuran Menurut Jenis dan Kabupaten/Kota",
-        "category": "hortikultura",
-    },
-    # ── Peternakan ──────────────────────────────────────────────────────────
-    "9d11046b-a61b-4169-bf20-b691483162ba": {
-        "var": "1375",
-        "label": "Jumlah Potong Hewan Menurut Jenis Ternak",
-        "category": "peternakan",
+        "defaultTh": "123",
     },
     # ── Perikanan ───────────────────────────────────────────────────────────
     "3f92d70a-8533-4f25-bc9f-332b7a4c8b84": {
-        "var": "1398",
-        "label": "Produksi Perikanan Tangkap di Perairan Darat",
+        "var": "204",
+        "label": "PDRB Sektor Pertanian, Kehutanan dan Perikanan Aceh",
         "category": "perikanan",
+        "defaultTh": "124",
+    },
+    # ── Indikator Tambahan ──────────────────────────────────────────────────
+    "1d4d7e1a-9d53-45a4-a11e-dc24d6c8cf25": {
+        "var": "246",
+        "label": "Harapan Lama Sekolah (HLS) Menurut Kabupaten/Kota",
+        "category": "pendidikan",
+        "defaultTh": "124",
+    },
+    "81dc3ba5-e050-47fe-846b-298ca2977216": {
+        "var": "45",
+        "label": "Garis Kemiskinan Menurut Kabupaten/Kota",
+        "category": "kemiskinan",
+        "defaultTh": "124",
+    },
+    "21cece89-360f-480d-a3e9-a841a79e752d": {
+        "var": "2",
+        "label": "Indeks Harga Konsumen (IHK) Provinsi Aceh",
+        "category": "inflasi",
+        "defaultTh": "124",
     },
 }
 
@@ -131,77 +145,57 @@ import re
 
 # ---------------------------------------------------------------------------
 # Kamus Kata Kunci → Variabel BPS (untuk tool langsung tanpa ID dataset)
-# Memungkinkan pencarian: "IPM Aceh" → var 498 tanpa perlu ID dataset
 # ---------------------------------------------------------------------------
 BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
     # Pendidikan
-    "pendidikan": {"var": "490", "label": "Rata-rata Lama Sekolah (RLS)"},
-    "sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah (RLS)"},
-    "guru": {"var": "490", "label": "Indikator Pendidikan / RLS"},
-    "murid": {"var": "490", "label": "Indikator Pendidikan / RLS"},
-    "siswa": {"var": "490", "label": "Indikator Pendidikan / RLS"},
-    "lama sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah"},
-    "rata-rata lama sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah"},
-    "harapan lama sekolah": {"var": "495", "label": "Harapan Lama Sekolah"},
-    "rls": {"var": "490", "label": "Rata-rata Lama Sekolah"},
-    "hls": {"var": "495", "label": "Harapan Lama Sekolah"},
-    "aps": {"var": "490", "label": "Angka Partisipasi Sekolah"},
-    "angka partisipasi sekolah": {"var": "490", "label": "Angka Partisipasi Sekolah"},
-    "apm": {"var": "490", "label": "Angka Partisipasi Murni"},
-    "apk": {"var": "490", "label": "Angka Partisipasi Kasar"},
+    "pendidikan": {"var": "245", "label": "Rata-rata Lama Sekolah (RLS)", "defaultTh": "124"},
+    "sekolah": {"var": "245", "label": "Rata-rata Lama Sekolah (RLS)", "defaultTh": "124"},
+    "guru": {"var": "245", "label": "Indikator Pendidikan / RLS", "defaultTh": "124"},
+    "murid": {"var": "245", "label": "Indikator Pendidikan / RLS", "defaultTh": "124"},
+    "siswa": {"var": "245", "label": "Indikator Pendidikan / RLS", "defaultTh": "124"},
+    "lama sekolah": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
+    "rata-rata lama sekolah": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
+    "harapan lama sekolah": {"var": "246", "label": "Harapan Lama Sekolah", "defaultTh": "124"},
+    "rls": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
+    "hls": {"var": "246", "label": "Harapan Lama Sekolah", "defaultTh": "124"},
+    "aps": {"var": "245", "label": "Angka Partisipasi Sekolah / RLS", "defaultTh": "124"},
 
     # Kemiskinan
-    "kemiskinan": {"var": "621", "label": "Persentase Penduduk Miskin"},
-    "miskin": {"var": "621", "label": "Persentase Penduduk Miskin"},
-    "kemiskinan ekstrem": {"var": "2212", "label": "Persentase Kemiskinan Ekstrem"},
-    "garis kemiskinan": {"var": "622", "label": "Garis Kemiskinan"},
+    "kemiskinan": {"var": "42", "label": "Persentase Penduduk Miskin", "defaultTh": "124"},
+    "miskin": {"var": "42", "label": "Persentase Penduduk Miskin", "defaultTh": "124"},
+    "penduduk miskin": {"var": "42", "label": "Persentase Penduduk Miskin", "defaultTh": "124"},
+    "jumlah penduduk miskin": {"var": "41", "label": "Jumlah Penduduk Miskin", "defaultTh": "124"},
+    "garis kemiskinan": {"var": "45", "label": "Garis Kemiskinan", "defaultTh": "124"},
 
     # IPM
-    "ipm": {"var": "498", "label": "Indeks Pembangunan Manusia"},
-    "pembangunan manusia": {"var": "498", "label": "Indeks Pembangunan Manusia"},
+    "ipm": {"var": "245", "label": "Indeks Pembangunan Manusia / RLS", "defaultTh": "124"},
+    "pembangunan manusia": {"var": "245", "label": "Indeks Pembangunan Manusia / RLS", "defaultTh": "124"},
 
     # Ketenagakerjaan
-    "pengangguran": {"var": "529", "label": "Tingkat Pengangguran Terbuka"},
-    "tpt": {"var": "529", "label": "Tingkat Pengangguran Terbuka"},
-    "angkatan kerja": {"var": "527", "label": "Angkatan Kerja"},
+    "pengangguran": {"var": "206", "label": "Tingkat Pengangguran Terbuka", "defaultTh": "124"},
+    "tpt": {"var": "206", "label": "Tingkat Pengangguran Terbuka", "defaultTh": "124"},
+    "angkatan kerja": {"var": "206", "label": "Ketenagakerjaan / TPT", "defaultTh": "124"},
 
-    # Ekonomi
-    "pdrb": {"var": "786", "label": "PDRB Per Kapita"},
-    "pertumbuhan ekonomi": {"var": "199", "label": "Laju Pertumbuhan Ekonomi"},
-    "laju pertumbuhan": {"var": "199", "label": "Laju Pertumbuhan Ekonomi"},
+    # Ekonomi & PDRB
+    "pdrb": {"var": "204", "label": "Laju Pertumbuhan PDRB", "defaultTh": "124"},
+    "pertumbuhan ekonomi": {"var": "204", "label": "Laju Pertumbuhan Ekonomi", "defaultTh": "124"},
+    "laju pertumbuhan": {"var": "204", "label": "Laju Pertumbuhan Ekonomi", "defaultTh": "124"},
 
-    # Inflasi & Harga
-    "inflasi": {"var": "1400", "label": "Laju Inflasi"},
-    "ihn": {"var": "1400", "label": "Indeks Harga Nasional"},
+    # Inflasi
+    "inflasi": {"var": "564", "label": "Laju Inflasi Tahun ke Tahun", "defaultTh": "124"},
+    "ihk": {"var": "2", "label": "Indeks Harga Konsumen", "defaultTh": "124"},
 
     # Ketimpangan
-    "gini": {"var": "631", "label": "Rasio Gini"},
-    "rasio gini": {"var": "631", "label": "Rasio Gini"},
+    "gini": {"var": "60", "label": "Rasio Gini", "defaultTh": "124"},
+    "rasio gini": {"var": "60", "label": "Rasio Gini", "defaultTh": "124"},
 
     # Pertanian
-    "padi": {"var": "1321", "label": "Produksi Padi"},
-    "jagung": {"var": "1323", "label": "Produksi Jagung"},
-    "kedelai": {"var": "1325", "label": "Produksi Kedelai"},
-    "sayur": {"var": "1350", "label": "Produksi Sayuran"},
-    "hortikultura": {"var": "1350", "label": "Produksi Hortikultura"},
-
-    # Peternakan
-    "ternak": {"var": "1375", "label": "Populasi Ternak"},
-    "sapi": {"var": "1377", "label": "Populasi Sapi"},
-    "ayam": {"var": "1379", "label": "Populasi Ayam"},
+    "padi": {"var": "574", "label": "Produksi Padi", "defaultTh": "123"},
+    "produksi padi": {"var": "574", "label": "Produksi Padi", "defaultTh": "123"},
 
     # Perikanan
-    "perikanan": {"var": "1398", "label": "Produksi Perikanan"},
-    "ikan": {"var": "1398", "label": "Produksi Perikanan"},
-
-    # Kesehatan
-    "stunting": {"var": "2212", "label": "Prevalensi Stunting"},
-    "usia harapan hidup": {"var": "494", "label": "Umur Harapan Hidup"},
-    "uhh": {"var": "494", "label": "Umur Harapan Hidup"},
-
-    # Sosial
-    "kemiskinan ekstrem desa": {"var": "2213", "label": "Kemiskinan Ekstrem Perdesaan"},
-    "perlindungan sosial": {"var": "621", "label": "Penerima Perlindungan Sosial"},
+    "perikanan": {"var": "204", "label": "PDRB Lapangan Usaha Perikanan", "defaultTh": "124"},
+    "ikan": {"var": "204", "label": "PDRB Lapangan Usaha Perikanan", "defaultTh": "124"},
 }
 
 
@@ -292,7 +286,27 @@ def bps_payload_ke_dataframe(payload: dict[str, Any]) -> pd.DataFrame | None:
                         rows.append(row)
 
     if not rows:
-        logger.warning("datacontent BPS ditemukan tetapi tidak ada nilai yang berhasil di-decode (mungkin kunci format berbeda).")
+        # Fallback: iterasi langsung dari kunci datacontent
+        vervar_map = {str(vv.get("val", "")): vv.get("label", "") for vv in vervar}
+        th_label = tahun_list[0].get("label", "2024") if tahun_list else "2024"
+        for key, val in datacontent.items():
+            matched_val = ""
+            matched_label = ""
+            for v_val, v_label in vervar_map.items():
+                if v_val and key.startswith(v_val):
+                    matched_val = v_val
+                    matched_label = v_label
+                    break
+            rows.append({
+                "kode_wilayah": matched_val or key[:4],
+                "nama_wilayah": matched_label or f"Wilayah {key[:4]}",
+                "tahun": th_label,
+                "indikator": var_label,
+                "nilai": val,
+            })
+
+    if not rows:
+        logger.warning("datacontent BPS ditemukan tetapi tidak ada nilai yang berhasil di-decode.")
         return None
 
     df = pd.DataFrame(rows)

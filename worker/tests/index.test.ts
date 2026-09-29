@@ -134,11 +134,11 @@ describe("Cloudflare Worker adapter & Tools", () => {
 
     // 2. Built-in BPS_INDICATOR_MAP (kemiskinan)
     const src2 = bpsSource({ identifier: "0116d97b-1b4a-4c6a-a243-33833660fb85" }, mockEnv);
-    expect(src2?.variable).toBe("621");
+    expect(src2?.variable).toBe("42");
 
-    // 3. IPM
+    // 3. IPM / RLS
     const src3 = bpsSource({ identifier: "78794e4b-2bbe-45ef-abd1-0a65c2e98702" }, mockEnv);
-    expect(src3?.variable).toBe("498");
+    expect(src3?.variable).toBe("245");
 
     // 4. Unknown
     const src4 = bpsSource({ identifier: "unknown-uuid" }, mockEnv);
@@ -149,36 +149,35 @@ describe("Cloudflare Worker adapter & Tools", () => {
   it("cariVarBpsDariKataKunci TIDAK mencocokkan kata 'ikan' saat query 'pendidikan'", () => {
     const result = cariVarBpsDariKataKunci("pendidikan");
     expect(result).not.toBeNull();
-    // Harus mencocokkan indikator pendidikan (var 490), BUKAN perikanan (var 1398)
-    expect(result?.var).toBe("490");
+    // Harus mencocokkan indikator pendidikan (var 245), BUKAN perikanan (var 204)
+    expect(result?.var).toBe("245");
     expect(result?.label).toContain("Lama Sekolah");
-    expect(result?.var).not.toBe("1398");
   });
 
   it("cariVarBpsDariKataKunci mencocokkan seluruh variasi kata kunci pendidikan dengan tepat", () => {
-    expect(cariVarBpsDariKataKunci("sekolah")?.var).toBe("490");
-    expect(cariVarBpsDariKataKunci("guru")?.var).toBe("490");
-    expect(cariVarBpsDariKataKunci("murid")?.var).toBe("490");
-    expect(cariVarBpsDariKataKunci("siswa")?.var).toBe("490");
-    expect(cariVarBpsDariKataKunci("rata-rata lama sekolah")?.var).toBe("490");
-    expect(cariVarBpsDariKataKunci("harapan lama sekolah")?.var).toBe("495");
-    expect(cariVarBpsDariKataKunci("hls")?.var).toBe("495");
-    expect(cariVarBpsDariKataKunci("rls")?.var).toBe("490");
-    expect(cariVarBpsDariKataKunci("aps")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("sekolah")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("guru")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("murid")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("siswa")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("rata-rata lama sekolah")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("harapan lama sekolah")?.var).toBe("246");
+    expect(cariVarBpsDariKataKunci("hls")?.var).toBe("246");
+    expect(cariVarBpsDariKataKunci("rls")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("aps")?.var).toBe("245");
   });
 
-  it("cariVarBpsDariKataKunci tetap mencocokkan kata 'ikan' dan 'perikanan' ke var 1398", () => {
-    expect(cariVarBpsDariKataKunci("ikan")?.var).toBe("1398");
-    expect(cariVarBpsDariKataKunci("perikanan")?.var).toBe("1398");
-    expect(cariVarBpsDariKataKunci("produksi perikanan tangkap")?.var).toBe("1398");
+  it("cariVarBpsDariKataKunci tetap mencocokkan kata 'ikan' dan 'perikanan' ke sektor perikanan", () => {
+    expect(cariVarBpsDariKataKunci("ikan")?.var).toBe("204");
+    expect(cariVarBpsDariKataKunci("perikanan")?.var).toBe("204");
   });
 
   it("cariVarBpsDariKataKunci mencari kata kunci non-pendidikan lainnya dengan benar", () => {
-    expect(cariVarBpsDariKataKunci("kemiskinan")?.var).toBe("621");
-    expect(cariVarBpsDariKataKunci("ipm")?.var).toBe("498");
-    expect(cariVarBpsDariKataKunci("tpt")?.var).toBe("529");
-    expect(cariVarBpsDariKataKunci("padi")?.var).toBe("1321");
-    expect(cariVarBpsDariKataKunci("inflasi")?.var).toBe("1400");
+    expect(cariVarBpsDariKataKunci("kemiskinan")?.var).toBe("42");
+    expect(cariVarBpsDariKataKunci("ipm")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("tpt")?.var).toBe("206");
+    expect(cariVarBpsDariKataKunci("padi")?.var).toBe("574");
+    expect(cariVarBpsDariKataKunci("inflasi")?.var).toBe("564");
+    expect(cariVarBpsDariKataKunci("gini")?.var).toBe("60");
     expect(cariVarBpsDariKataKunci("kata-kunci-tidak-ada-sama-sekali")).toBeNull();
   });
 

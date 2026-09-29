@@ -270,11 +270,12 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
     return None
 
 
-def _bps_url(source: dict[str, str]) -> str:
+def _bps_url(source: dict[str, str], th: str = "124") -> str:
     return (
         "https://webapi.bps.go.id/v1/api/list/model/data/"
         f"domain/{quote(source['domain'], safe='')}/"
         f"var/{quote(source['variable'], safe='')}/"
+        f"th/{quote(th, safe='')}/"
         f"key/{quote(BPS_API_KEY, safe='')}"
     )
 
@@ -300,21 +301,25 @@ async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[
     source = _bps_source(item)
     if not source or not BPS_API_KEY:
         return None
-    url = _bps_url(source)
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            teks_csv = bps_payload_ke_csv(response.json())
-        if not teks_csv:
-            return None
-        return _analisis_csv(teks_csv, url, 50), source
-    except (httpx.HTTPError, ValueError, TypeError) as error:
-        logger.warning("Sumber BPS gagal diproses: %s", type(error).__name__)
-        return None
+    for th in ["124", "123", "122"]:
+        url = _bps_url(source, th=th)
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+                response = await client.get(url)
+                if not response.is_success:
+                    continue
+                teks_csv = bps_payload_ke_csv(response.json())
+            if not teks_csv:
+                continue
+            return _analisis_csv(teks_csv, url, 50), source
+        except (httpx.HTTPError, ValueError, TypeError) as error:
+            logger.warning("Sumber BPS th=%s gagal: %s", th, type(error).__name__)
+    return None
 
 
-async def _ambil_langsung_dari_bps(var_id: str, domain: str = "1100") -> tuple[CsvReadResult, str] | None:
+async def _ambil_langsung_dari_bps(
+    var_id: str, domain: str = "1100", default_th: str | None = None
+) -> tuple[CsvReadResult, str] | None:
     """Ambil data langsung dari BPS berdasarkan var_id (tanpa dataset Satu Data Aceh).
 
     Digunakan oleh tool bandingkan_data untuk mendapatkan angka resmi terbaru dari BPS.
@@ -322,23 +327,29 @@ async def _ambil_langsung_dari_bps(var_id: str, domain: str = "1100") -> tuple[C
     """
     if not BPS_API_KEY:
         return None
-    url = (
-        f"https://webapi.bps.go.id/v1/api/list/model/data/"
-        f"domain/{quote(domain, safe='')}/"
-        f"var/{quote(var_id, safe='')}/"
-        f"key/{quote(BPS_API_KEY, safe='')}"
-    )
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            teks_csv = bps_payload_ke_csv(response.json())
-        if not teks_csv:
-            return None
-        return _analisis_csv(teks_csv, url, 50), url
-    except (httpx.HTTPError, ValueError, TypeError) as error:
-        logger.warning("Pengambilan langsung BPS var=%s gagal: %s", var_id, type(error).__name__)
-        return None
+    th_candidates = [default_th, "124", "123"] if default_th else ["124", "123", "122"]
+    for th in th_candidates:
+        if not th:
+            continue
+        url = (
+            f"https://webapi.bps.go.id/v1/api/list/model/data/"
+            f"domain/{quote(domain, safe='')}/"
+            f"var/{quote(var_id, safe='')}/"
+            f"th/{quote(th, safe='')}/"
+            f"key/{quote(BPS_API_KEY, safe='')}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+                response = await client.get(url)
+                if not response.is_success:
+                    continue
+                teks_csv = bps_payload_ke_csv(response.json())
+            if not teks_csv:
+                continue
+            return _analisis_csv(teks_csv, url, 50), url
+        except (httpx.HTTPError, ValueError, TypeError) as error:
+            logger.warning("Pengambilan langsung BPS var=%s th=%s gagal: %s", var_id, th, type(error).__name__)
+    return None
 
 
 def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict[str, object]]:
