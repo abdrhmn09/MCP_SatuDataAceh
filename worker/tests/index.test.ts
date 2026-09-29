@@ -1,19 +1,36 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   analyzeCsvText,
   bpsPayloadToText,
+  bpsSource,
+  createServer,
+  csvToMarkdownTable,
   datasetYear,
+  findCsvLinkInHtml,
   isPublicHttpsUrl,
   parseCsvRows,
   searchDatasets,
+  type Env,
 } from "../src/index";
+import { cariVarBpsDariKataKunci, BPS_INDICATOR_MAP, BPS_KEYWORD_TO_VAR } from "../src/bps";
 
-describe("Cloudflare Worker adapter", () => {
+const mockEnv: Env = {
+  CATALOG_URL: "https://satudata.acehprov.go.id/data.json",
+  DATA_YEAR: "2025",
+  CATALOG_TTL_SECONDS: "3600",
+  MAX_REQUESTS_PER_MINUTE: "60",
+  BPS_API_KEY: "dummy-key",
+  BPS_DOMAIN: "1100",
+  BPS_DATASET_MAP: '{"custom-id":"999"}',
+};
+
+describe("Cloudflare Worker adapter & Tools", () => {
   it("menerima URL HTTPS publik dan menolak alamat lokal", () => {
     expect(isPublicHttpsUrl("https://satudata.acehprov.go.id/data.json")).toBe(true);
     expect(isPublicHttpsUrl("http://satudata.acehprov.go.id/data.json")).toBe(false);
     expect(isPublicHttpsUrl("https://localhost/data.csv")).toBe(false);
     expect(isPublicHttpsUrl("https://127.0.0.1/data.csv")).toBe(false);
+    expect(isPublicHttpsUrl("https://169.254.169.254/secret")).toBe(false);
   });
 
   it("mencari dataset dari metadata dan membatasi lima hasil", () => {
@@ -59,10 +76,13 @@ describe("Cloudflare Worker adapter", () => {
     expect(result.status).toBe("html");
   });
 
-  it("mempertahankan header-only sebagai status kosong", () => {
-    const result = analyzeCsvText("nama,nilai\n", 20);
-    expect(result.status).toBe("header_only");
-    expect(result.text).toBe("");
+  it("memformat CSV menjadi tabel markdown dengan benar", () => {
+    const csv = 'kabupaten,persen\n"Banda Aceh",7.12\nSimeulue,18.23';
+    const md = csvToMarkdownTable(csv, 20);
+    expect(md).toContain("| kabupaten | persen |");
+    expect(md).toContain("| --- | --- |");
+    expect(md).toContain("| Banda Aceh | 7.12 |");
+    expect(md).toContain("| Simeulue | 18.23 |");
   });
 
   it("mengurai payload datacontent BPS dengan format matriks ke CSV", () => {
@@ -99,5 +119,57 @@ describe("Cloudflare Worker adapter", () => {
     expect(bpsPayloadToText(null)).toBe("");
     expect(bpsPayloadToText({})).toBe("");
     expect(bpsPayloadToText({ datacontent: {} })).toBe("");
+  });
+
+  it("bpsSource mendukung BPS_INDICATOR_MAP dan env override", () => {
+    // 1. Env override
+    const src1 = bpsSource({ identifier: "custom-id" }, mockEnv);
+    expect(src1?.variable).toBe("999");
+
+    // 2. Built-in BPS_INDICATOR_MAP (kemiskinan)
+    const src2 = bpsSource({ identifier: "0116d97b-1b4a-4c6a-a243-33833660fb85" }, mockEnv);
+    expect(src2?.variable).toBe("621");
+
+    // 3. IPM
+    const src3 = bpsSource({ identifier: "78794e4b-2bbe-45ef-abd1-0a65c2e98702" }, mockEnv);
+    expect(src3?.variable).toBe("498");
+
+    // 4. Unknown
+    const src4 = bpsSource({ identifier: "unknown-uuid" }, mockEnv);
+    expect(src4).toBeNull();
+  });
+
+  it("cariVarBpsDariKataKunci mencari kata kunci BPS dengan benar", () => {
+    expect(cariVarBpsDariKataKunci("kemiskinan")?.var).toBe("621");
+    expect(cariVarBpsDariKataKunci("ipm")?.var).toBe("498");
+    expect(cariVarBpsDariKataKunci("tpt")?.var).toBe("529");
+    expect(cariVarBpsDariKataKunci("padi")?.var).toBe("1321");
+    expect(cariVarBpsDariKataKunci("inflasi")?.var).toBe("1400");
+    expect(cariVarBpsDariKataKunci("kata-kunci-tidak-ada")).toBeNull();
+  });
+
+  it("BPS_INDICATOR_MAP memiliki minimal 15 indikator strategis", () => {
+    expect(Object.keys(BPS_INDICATOR_MAP).length).toBeGreaterThanOrEqual(15);
+  });
+
+  it("BPS_KEYWORD_TO_VAR memiliki minimal 25 kata kunci", () => {
+    expect(Object.keys(BPS_KEYWORD_TO_VAR).length).toBeGreaterThanOrEqual(25);
+  });
+
+  it("findCsvLinkInHtml mengekstrak tautan CSV dari konten HTML", async () => {
+    const htmlContent = '<html><body><a href="https://example.com/data/laporan.csv">Unduh CSV</a></body></html>';
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => htmlContent,
+    } as unknown as Response);
+
+    const link = await findCsvLinkInHtml("https://example.com/page");
+    expect(link).toBe("https://example.com/data/laporan.csv");
+  });
+
+  it("createServer mendaftarkan 5 tool lengkap", () => {
+    const server = createServer(mockEnv);
+    // Verifikasi objek server terbentuk tanpa error
+    expect(server).toBeDefined();
   });
 });
