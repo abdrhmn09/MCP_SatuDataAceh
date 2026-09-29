@@ -183,23 +183,74 @@ export function bpsUrl(source: BpsSource, env: Env, thParam: string = "124"): st
   return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}/th/${encodeURIComponent(thParam)}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
 }
 
+export async function fetchBpsJson(
+  url: string,
+): Promise<{ ok: boolean; payload?: unknown; status?: number; error?: string }> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+      },
+    });
+
+    const textBody = await response.text();
+    if (!textBody || !textBody.trim()) {
+      return {
+        ok: false,
+        status: response.status,
+        error: `BPS mengembalikan respons kosong (HTTP ${response.status}).`,
+      };
+    }
+
+    const trimmed = textBody.trim();
+    if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") || trimmed.startsWith("<")) {
+      return {
+        ok: false,
+        status: response.status,
+        error: `BPS mengembalikan halaman HTML/WAF (HTTP ${response.status}). Pastikan API Key valid.`,
+      };
+    }
+
+    try {
+      const payload = JSON.parse(textBody);
+      return { ok: true, payload, status: response.status };
+    } catch (parseError) {
+      return {
+        ok: false,
+        status: response.status,
+        error: `Gagal mengurai respons JSON dari BPS (HTTP ${response.status}): ${parseError instanceof Error ? parseError.message : "Invalid JSON"}. Cuplikan: ${trimmed.slice(0, 100)}`,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Gagal terhubung ke BPS Web API: ${error instanceof Error ? error.message : "Network error"}`,
+    };
+  }
+}
+
 export async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analysis: CsvAnalysis; source: BpsSource } | null> {
   const source = bpsSource(dataset, env);
   if (!source || !env.BPS_API_KEY) return null;
   const thCandidates = ["124", "123", "122"];
   for (const th of thCandidates) {
-    try {
-      const response = await fetch(bpsUrl(source, env, th));
-      if (!response.ok) continue;
-      const payload = await response.json();
-      const diag = parseBpsDiagnostics(payload);
-      if (!diag.ok || !diag.dataAvailable) continue;
-      const text = bpsPayloadToText(payload);
-      if (!text) continue;
-      return { analysis: analyzeCsvText(text, MAX_ROWS), source };
-    } catch (error) {
-      console.error("BPS fallback failed for th=" + th, error instanceof Error ? error.message : "unknown error");
+    const url = bpsUrl(source, env, th);
+    const result = await fetchBpsJson(url);
+    if (!result.ok || !result.payload) {
+      continue;
     }
+    const diag = parseBpsDiagnostics(result.payload);
+    if (!diag.ok || !diag.dataAvailable) {
+      continue;
+    }
+    const text = bpsPayloadToText(result.payload);
+    if (!text) {
+      continue;
+    }
+    return { analysis: analyzeCsvText(text, MAX_ROWS), source };
   }
   return null;
 }
@@ -226,36 +277,32 @@ export async function fetchFromBpsDirect(
     };
   }
   const thCandidates = preferredTh ? [preferredTh, "124", "123"] : ["124", "123", "122"];
-  let lastDiag = "Data tidak ditemukan.";
+  let lastDiag = "Data tidak ditemukan di BPS.";
   let lastUrl = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/124/key/***/`;
 
   for (const th of thCandidates) {
     const url = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/${encodeURIComponent(th)}/key/${encodeURIComponent(env.BPS_API_KEY)}/`;
     lastUrl = url;
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        lastDiag = `HTTP ${response.status}: ${response.statusText}`;
-        continue;
-      }
-      const payload = await response.json();
-      const diag = parseBpsDiagnostics(payload);
-      lastDiag = diag.message;
-      if (!diag.ok || !diag.dataAvailable) {
-        continue;
-      }
-      const text = bpsPayloadToText(payload);
-      if (!text) {
-        continue;
-      }
-      return {
-        analysis: analyzeCsvText(text, maxRows),
-        url,
-        diagnostic: diag.message,
-      };
-    } catch (error) {
-      lastDiag = error instanceof Error ? error.message : "unknown network error";
+    const result = await fetchBpsJson(url);
+    if (!result.ok || !result.payload) {
+      lastDiag = result.error || "Gagal mengambil data dari BPS.";
+      continue;
     }
+    const diag = parseBpsDiagnostics(result.payload);
+    lastDiag = diag.message;
+    if (!diag.ok || !diag.dataAvailable) {
+      continue;
+    }
+    const text = bpsPayloadToText(result.payload);
+    if (!text) {
+      lastDiag = "Payload BPS berhasil diterima tetapi konversi data ke format CSV kosong.";
+      continue;
+    }
+    return {
+      analysis: analyzeCsvText(text, maxRows),
+      url,
+      diagnostic: diag.message,
+    };
   }
 
   return {
@@ -415,7 +462,13 @@ export async function fetchCsvFromUrl(url: string, maxRows: number): Promise<Csv
   if (!isPublicHttpsUrl(url)) {
     throw new Error("URL CSV harus menggunakan HTTPS dan alamat publik yang valid.");
   }
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/csv, text/plain, application/json, */*",
+    },
+  });
   if (!response.ok) {
     throw new Error(`Gagal mengunduh file CSV dari URL tersebut (HTTP ${response.status}).`);
   }
