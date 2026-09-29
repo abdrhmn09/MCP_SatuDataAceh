@@ -127,51 +127,78 @@ BPS_INDICATOR_MAP: dict[str, dict[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
+import re
+
+# ---------------------------------------------------------------------------
 # Kamus Kata Kunci → Variabel BPS (untuk tool langsung tanpa ID dataset)
 # Memungkinkan pencarian: "IPM Aceh" → var 498 tanpa perlu ID dataset
 # ---------------------------------------------------------------------------
 BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
+    # Pendidikan
+    "pendidikan": {"var": "490", "label": "Rata-rata Lama Sekolah (RLS)"},
+    "sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah (RLS)"},
+    "guru": {"var": "490", "label": "Indikator Pendidikan / RLS"},
+    "murid": {"var": "490", "label": "Indikator Pendidikan / RLS"},
+    "siswa": {"var": "490", "label": "Indikator Pendidikan / RLS"},
+    "lama sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah"},
+    "rata-rata lama sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah"},
+    "harapan lama sekolah": {"var": "495", "label": "Harapan Lama Sekolah"},
+    "rls": {"var": "490", "label": "Rata-rata Lama Sekolah"},
+    "hls": {"var": "495", "label": "Harapan Lama Sekolah"},
+    "aps": {"var": "490", "label": "Angka Partisipasi Sekolah"},
+    "angka partisipasi sekolah": {"var": "490", "label": "Angka Partisipasi Sekolah"},
+    "apm": {"var": "490", "label": "Angka Partisipasi Murni"},
+    "apk": {"var": "490", "label": "Angka Partisipasi Kasar"},
+
     # Kemiskinan
     "kemiskinan": {"var": "621", "label": "Persentase Penduduk Miskin"},
     "miskin": {"var": "621", "label": "Persentase Penduduk Miskin"},
     "kemiskinan ekstrem": {"var": "2212", "label": "Persentase Kemiskinan Ekstrem"},
     "garis kemiskinan": {"var": "622", "label": "Garis Kemiskinan"},
-    # IPM & Pendidikan
+
+    # IPM
     "ipm": {"var": "498", "label": "Indeks Pembangunan Manusia"},
     "pembangunan manusia": {"var": "498", "label": "Indeks Pembangunan Manusia"},
-    "rata-rata lama sekolah": {"var": "490", "label": "Rata-rata Lama Sekolah"},
-    "harapan lama sekolah": {"var": "495", "label": "Harapan Lama Sekolah"},
+
     # Ketenagakerjaan
     "pengangguran": {"var": "529", "label": "Tingkat Pengangguran Terbuka"},
     "tpt": {"var": "529", "label": "Tingkat Pengangguran Terbuka"},
     "angkatan kerja": {"var": "527", "label": "Angkatan Kerja"},
+
     # Ekonomi
     "pdrb": {"var": "786", "label": "PDRB Per Kapita"},
     "pertumbuhan ekonomi": {"var": "199", "label": "Laju Pertumbuhan Ekonomi"},
     "laju pertumbuhan": {"var": "199", "label": "Laju Pertumbuhan Ekonomi"},
+
     # Inflasi & Harga
     "inflasi": {"var": "1400", "label": "Laju Inflasi"},
     "ihn": {"var": "1400", "label": "Indeks Harga Nasional"},
+
     # Ketimpangan
     "gini": {"var": "631", "label": "Rasio Gini"},
     "rasio gini": {"var": "631", "label": "Rasio Gini"},
+
     # Pertanian
     "padi": {"var": "1321", "label": "Produksi Padi"},
     "jagung": {"var": "1323", "label": "Produksi Jagung"},
     "kedelai": {"var": "1325", "label": "Produksi Kedelai"},
     "sayur": {"var": "1350", "label": "Produksi Sayuran"},
     "hortikultura": {"var": "1350", "label": "Produksi Hortikultura"},
+
     # Peternakan
     "ternak": {"var": "1375", "label": "Populasi Ternak"},
     "sapi": {"var": "1377", "label": "Populasi Sapi"},
     "ayam": {"var": "1379", "label": "Populasi Ayam"},
+
     # Perikanan
     "perikanan": {"var": "1398", "label": "Produksi Perikanan"},
     "ikan": {"var": "1398", "label": "Produksi Perikanan"},
+
     # Kesehatan
     "stunting": {"var": "2212", "label": "Prevalensi Stunting"},
     "usia harapan hidup": {"var": "494", "label": "Umur Harapan Hidup"},
     "uhh": {"var": "494", "label": "Umur Harapan Hidup"},
+
     # Sosial
     "kemiskinan ekstrem desa": {"var": "2213", "label": "Kemiskinan Ekstrem Perdesaan"},
     "perlindungan sosial": {"var": "621", "label": "Penerima Perlindungan Sosial"},
@@ -179,15 +206,28 @@ BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
 
 
 def cari_var_bps_dari_kata_kunci(kata_kunci: str) -> dict[str, str] | None:
-    """Cari var_id BPS dari kata kunci pengguna (case-insensitive, substring match)."""
+    """Cari var_id BPS dari kata kunci pengguna dengan pencocokan kata utuh (word boundary)."""
     needle = kata_kunci.strip().lower()
-    # Exact match dulu
+    if not needle:
+        return None
+
+    # 1. Exact match dulu
     if needle in BPS_KEYWORD_TO_VAR:
         return BPS_KEYWORD_TO_VAR[needle]
-    # Substring match
-    for key, val in BPS_KEYWORD_TO_VAR.items():
-        if key in needle or needle in key:
-            return val
+
+    # 2. Phrase match dengan word boundary regex (prioritaskan kunci yang lebih panjang)
+    sorted_keys = sorted(BPS_KEYWORD_TO_VAR.keys(), key=len, reverse=True)
+    for key in sorted_keys:
+        pattern = rf"\b{re.escape(key)}\b"
+        if re.search(pattern, needle):
+            return BPS_KEYWORD_TO_VAR[key]
+
+    # 3. Token match: jika ada token kata input yang sama persis dengan kata kunci
+    tokens = [t for t in re.split(r"[\s,./\-_+]+", needle) if len(t) > 1]
+    for token in tokens:
+        if token in BPS_KEYWORD_TO_VAR:
+            return BPS_KEYWORD_TO_VAR[token]
+
     return None
 
 

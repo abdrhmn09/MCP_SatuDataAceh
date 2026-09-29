@@ -13,6 +13,12 @@ export interface BpsKeywordMatch {
   label: string;
 }
 
+export interface BpsDiagnosticResult {
+  ok: boolean;
+  message: string;
+  dataAvailable: boolean;
+}
+
 export const BPS_INDICATOR_MAP: Record<string, BpsIndicator> = {
   // ── Kemiskinan ──────────────────────────────────────────────────────────
   "0116d97b-1b4a-4c6a-a243-33833660fb85": {
@@ -25,7 +31,7 @@ export const BPS_INDICATOR_MAP: Record<string, BpsIndicator> = {
     label: "Persentase Penduduk Miskin Ekstrem",
     category: "kemiskinan",
   },
-  // ── Pembangunan Manusia ─────────────────────────────────────────────────
+  // ── Pembangunan Manusia & Pendidikan ─────────────────────────────────────
   "78794e4b-2bbe-45ef-abd1-0a65c2e98702": {
     var: "498",
     label: "Indeks Pembangunan Manusia (IPM)",
@@ -35,6 +41,16 @@ export const BPS_INDICATOR_MAP: Record<string, BpsIndicator> = {
     var: "498",
     label: "IPM Berdasarkan Jenis Kelamin",
     category: "ipm",
+  },
+  "f2585d70-70d1-49f9-8c78-6750a46e1780": {
+    var: "490",
+    label: "Rata-rata Lama Sekolah Provinsi Aceh Menurut Kabupaten/Kota",
+    category: "pendidikan",
+  },
+  "6cab69b8-d936-4f8a-b5a1-ea1fb45589e9": {
+    var: "490",
+    label: "Indikator Pendidikan / Rata-rata Lama Sekolah",
+    category: "pendidikan",
   },
   // ── Ketenagakerjaan ─────────────────────────────────────────────────────
   "97e549de-0a20-452a-9948-455abe2532a8": {
@@ -81,12 +97,6 @@ export const BPS_INDICATOR_MAP: Record<string, BpsIndicator> = {
     label: "Persentase Fasyankes yang Terpenuhi SDM Kesehatan",
     category: "kesehatan",
   },
-  // ── Pendidikan ──────────────────────────────────────────────────────────
-  "f2585d70-70d1-49f9-8c78-6750a46e1780": {
-    var: "490",
-    label: "Rata-rata Lama Sekolah Provinsi Aceh",
-    category: "pendidikan",
-  },
   // ── Pertanian Tanaman Pangan ────────────────────────────────────────────
   "d8c8a7f0-d329-4872-8546-294fd6267c7b": {
     var: "1321",
@@ -114,67 +124,162 @@ export const BPS_INDICATOR_MAP: Record<string, BpsIndicator> = {
 };
 
 export const BPS_KEYWORD_TO_VAR: Record<string, BpsKeywordMatch> = {
+  // Pendidikan
+  pendidikan: { var: "490", label: "Rata-rata Lama Sekolah (RLS)" },
+  sekolah: { var: "490", label: "Rata-rata Lama Sekolah (RLS)" },
+  guru: { var: "490", label: "Indikator Pendidikan / RLS" },
+  murid: { var: "490", label: "Indikator Pendidikan / RLS" },
+  siswa: { var: "490", label: "Indikator Pendidikan / RLS" },
+  "lama sekolah": { var: "490", label: "Rata-rata Lama Sekolah" },
+  "rata-rata lama sekolah": { var: "490", label: "Rata-rata Lama Sekolah" },
+  "harapan lama sekolah": { var: "495", label: "Harapan Lama Sekolah" },
+  rls: { var: "490", label: "Rata-rata Lama Sekolah" },
+  hls: { var: "495", label: "Harapan Lama Sekolah" },
+  aps: { var: "490", label: "Angka Partisipasi Sekolah" },
+  "angka partisipasi sekolah": { var: "490", label: "Angka Partisipasi Sekolah" },
+  apm: { var: "490", label: "Angka Partisipasi Murni" },
+  apk: { var: "490", label: "Angka Partisipasi Kasar" },
+
   // Kemiskinan
   kemiskinan: { var: "621", label: "Persentase Penduduk Miskin" },
   miskin: { var: "621", label: "Persentase Penduduk Miskin" },
   "kemiskinan ekstrem": { var: "2212", label: "Persentase Kemiskinan Ekstrem" },
   "garis kemiskinan": { var: "622", label: "Garis Kemiskinan" },
-  // IPM & Pendidikan
+
+  // IPM
   ipm: { var: "498", label: "Indeks Pembangunan Manusia" },
   "pembangunan manusia": { var: "498", label: "Indeks Pembangunan Manusia" },
-  "rata-rata lama sekolah": { var: "490", label: "Rata-rata Lama Sekolah" },
-  "harapan lama sekolah": { var: "495", label: "Harapan Lama Sekolah" },
+
   // Ketenagakerjaan
   pengangguran: { var: "529", label: "Tingkat Pengangguran Terbuka" },
   tpt: { var: "529", label: "Tingkat Pengangguran Terbuka" },
   "angkatan kerja": { var: "527", label: "Angkatan Kerja" },
+
   // Ekonomi
   pdrb: { var: "786", label: "PDRB Per Kapita" },
   "pertumbuhan ekonomi": { var: "199", label: "Laju Pertumbuhan Ekonomi" },
   "laju pertumbuhan": { var: "199", label: "Laju Pertumbuhan Ekonomi" },
+
   // Inflasi & Harga
   inflasi: { var: "1400", label: "Laju Inflasi" },
   ihn: { var: "1400", label: "Indeks Harga Nasional" },
+
   // Ketimpangan
   gini: { var: "631", label: "Rasio Gini" },
   "rasio gini": { var: "631", label: "Rasio Gini" },
+
   // Pertanian
   padi: { var: "1321", label: "Produksi Padi" },
   jagung: { var: "1323", label: "Produksi Jagung" },
   kedelai: { var: "1325", label: "Produksi Kedelai" },
   sayur: { var: "1350", label: "Produksi Sayuran" },
   hortikultura: { var: "1350", label: "Produksi Hortikultura" },
+
   // Peternakan
   ternak: { var: "1375", label: "Populasi Ternak" },
   sapi: { var: "1377", label: "Populasi Sapi" },
   ayam: { var: "1379", label: "Populasi Ayam" },
+
   // Perikanan
   perikanan: { var: "1398", label: "Produksi Perikanan" },
   ikan: { var: "1398", label: "Produksi Perikanan" },
+
   // Kesehatan
   stunting: { var: "2212", label: "Prevalensi Stunting" },
   "usia harapan hidup": { var: "494", label: "Umur Harapan Hidup" },
   uhh: { var: "494", label: "Umur Harapan Hidup" },
+
   // Sosial
   "kemiskinan ekstrem desa": { var: "2213", label: "Kemiskinan Ekstrem Perdesaan" },
   "perlindungan sosial": { var: "621", label: "Penerima Perlindungan Sosial" },
 };
 
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Mencari variabel BPS dari kata kunci pengguna dengan pencocokan kata utuh (word boundary).
+ * Mencegah false positives seperti "pendidikan" mencocokkan "ikan".
+ */
 export function cariVarBpsDariKataKunci(kataKunci: string): BpsKeywordMatch | null {
   const needle = kataKunci.trim().toLowerCase();
+  if (!needle) return null;
+
+  // 1. Exact match
   if (needle in BPS_KEYWORD_TO_VAR) {
     return BPS_KEYWORD_TO_VAR[needle];
   }
-  for (const [key, val] of Object.entries(BPS_KEYWORD_TO_VAR)) {
-    if (key.includes(needle) || needle.includes(key)) {
-      return val;
+
+  // 2. Phrase match dengan word boundary (prioritaskan kunci yang lebih panjang/spesifik)
+  const sortedKeys = Object.keys(BPS_KEYWORD_TO_VAR).sort((a, b) => b.length - a.length);
+  for (const key of sortedKeys) {
+    const pattern = new RegExp(`\\b${escapeRegex(key)}\\b`, "i");
+    if (pattern.test(needle)) {
+      return BPS_KEYWORD_TO_VAR[key];
     }
   }
+
+  // 3. Token-based word match: jika token kata input ada yang persis sama dengan kunci
+  const tokens = needle.split(/[\s,./\-_+]+/).filter((t) => t.length > 1);
+  for (const token of tokens) {
+    if (token in BPS_KEYWORD_TO_VAR) {
+      return BPS_KEYWORD_TO_VAR[token];
+    }
+  }
+
   return null;
 }
 
 function asText(value: unknown): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+/**
+ * Menganalisis respons Web API BPS untuk mengekstrak pesan status dan diagnostik error.
+ */
+export function parseBpsDiagnostics(payload: unknown): BpsDiagnosticResult {
+  if (!payload || typeof payload !== "object") {
+    return { ok: false, message: "Respons BPS tidak valid atau kosong.", dataAvailable: false };
+  }
+  const root = payload as Record<string, unknown>;
+  const status = asText(root.status).toLowerCase();
+  const availability = asText(root["data-availability"]).toLowerCase();
+  const message = asText(root.message);
+
+  if (status === "error" || message.toLowerCase().includes("not allowed") || message.toLowerCase().includes("key")) {
+    return {
+      ok: false,
+      message: message || "Akses BPS ditolak. Periksa kembali BPS API Key Anda.",
+      dataAvailable: false,
+    };
+  }
+
+  if (availability === "unavailable" || availability === "list-not-available" || message.toLowerCase().includes("tidak ditemukan")) {
+    return {
+      ok: false,
+      message: message || "Data tidak ditemukan untuk indikator/domain tersebut di BPS.",
+      dataAvailable: false,
+    };
+  }
+
+  if ("datacontent" in root && typeof root.datacontent === "object" && root.datacontent !== null) {
+    const datacontent = root.datacontent as Record<string, unknown>;
+    const count = Object.keys(datacontent).length;
+    if (count > 0) {
+      return { ok: true, message: `Berhasil memuat ${count} data point BPS.`, dataAvailable: true };
+    }
+  }
+
+  if (Array.isArray(root.data) && root.data.length > 0) {
+    return { ok: true, message: `Berhasil memuat ${root.data.length} baris data BPS.`, dataAvailable: true };
+  }
+
+  return {
+    ok: false,
+    message: message || "Tidak ada observasi data yang dapat dibaca dari respons BPS.",
+    dataAvailable: false,
+  };
 }
 
 export function bpsPayloadToText(payload: unknown): string {

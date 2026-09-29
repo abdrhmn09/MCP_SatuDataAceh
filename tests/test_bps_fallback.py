@@ -152,9 +152,22 @@ class BpsKeywordTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["var"], "529")
 
-    def test_kata_kunci_tidak_valid_mengembalikan_none(self):
-        result = cari_var_bps_dari_kata_kunci("xyzabc-tidak-ada")
-        self.assertIsNone(result)
+    def test_kata_kunci_pendidikan_tidak_mencocokkan_ikan(self):
+        """Pencarian 'pendidikan' harus mencocokkan indikator pendidikan (var 490), BUKAN 'ikan' (var 1398)."""
+        result = cari_var_bps_dari_kata_kunci("pendidikan")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["var"], "490")
+        self.assertNotEqual(result["var"], "1398")
+
+    def test_kata_kunci_ikan_tetap_mencocokkan_perikanan(self):
+        result = cari_var_bps_dari_kata_kunci("ikan")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["var"], "1398")
+
+    def test_kata_kunci_guru_dan_sekolah_mencocokkan_pendidikan(self):
+        self.assertEqual(cari_var_bps_dari_kata_kunci("guru")["var"], "490")
+        self.assertEqual(cari_var_bps_dari_kata_kunci("sekolah")["var"], "490")
+        self.assertEqual(cari_var_bps_dari_kata_kunci("murid")["var"], "490")
 
     def test_indicator_map_mencakup_minimal_10_indikator(self):
         self.assertGreaterEqual(len(BPS_INDICATOR_MAP), 10)

@@ -5,9 +5,10 @@ import {
   BPS_INDICATOR_MAP,
   cariVarBpsDariKataKunci,
   bpsPayloadToText,
+  parseBpsDiagnostics,
 } from "./bps";
 
-export { bpsPayloadToText } from "./bps";
+export { bpsPayloadToText, parseBpsDiagnostics, cariVarBpsDariKataKunci } from "./bps";
 
 export interface Env {
   CATALOG_URL: string;
@@ -188,7 +189,22 @@ export async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analys
   try {
     const response = await fetch(bpsUrl(source, env));
     if (!response.ok) return null;
-    const text = bpsPayloadToText(await response.json());
+    const payload = await response.json();
+    const diag = parseBpsDiagnostics(payload);
+    if (!diag.ok || !diag.dataAvailable) {
+      return {
+        analysis: {
+          status: "empty",
+          text: "",
+          preview: "",
+          rowCount: 0,
+          columnCount: 0,
+          message: `BPS Fallback: ${diag.message}`,
+        },
+        source,
+      };
+    }
+    const text = bpsPayloadToText(payload);
     if (!text) return null;
     return { analysis: analyzeCsvText(text, MAX_ROWS), source };
   } catch (error) {
@@ -202,22 +218,89 @@ export async function fetchFromBpsDirect(
   domain: string,
   env: Env,
   maxRows: number = MAX_ROWS,
-): Promise<{ analysis: CsvAnalysis; url: string } | null> {
-  if (!env.BPS_API_KEY) return null;
+): Promise<{ analysis: CsvAnalysis; url: string; diagnostic?: string } | null> {
+  if (!env.BPS_API_KEY) {
+    return {
+      analysis: {
+        status: "empty",
+        text: "",
+        preview: "",
+        rowCount: 0,
+        columnCount: 0,
+        message: "BPS_API_KEY belum dikonfigurasi. Daftarkan key Anda via secret Cloudflare Worker: npx wrangler secret put BPS_API_KEY",
+      },
+      url: `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/key/***/`,
+      diagnostic: "API Key belum disetel. Jalankan: npx wrangler secret put BPS_API_KEY",
+    };
+  }
   const url = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/key/${encodeURIComponent(env.BPS_API_KEY)}/`;
   try {
     const response = await fetch(url);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return {
+        analysis: {
+          status: "empty",
+          text: "",
+          preview: "",
+          rowCount: 0,
+          columnCount: 0,
+          message: `Permintaan ke BPS Web API gagal dengan status HTTP ${response.status}`,
+        },
+        url,
+        diagnostic: `HTTP ${response.status}: ${response.statusText}`,
+      };
+    }
     const payload = await response.json();
+    const diag = parseBpsDiagnostics(payload);
+    if (!diag.ok || !diag.dataAvailable) {
+      return {
+        analysis: {
+          status: "empty",
+          text: "",
+          preview: "",
+          rowCount: 0,
+          columnCount: 0,
+          message: `BPS API: ${diag.message}`,
+        },
+        url,
+        diagnostic: diag.message,
+      };
+    }
     const text = bpsPayloadToText(payload);
-    if (!text) return null;
+    if (!text) {
+      return {
+        analysis: {
+          status: "empty",
+          text: "",
+          preview: "",
+          rowCount: 0,
+          columnCount: 0,
+          message: `BPS API: Format data tidak dapat diuraikan (${diag.message})`,
+        },
+        url,
+        diagnostic: diag.message,
+      };
+    }
     return {
       analysis: analyzeCsvText(text, maxRows),
       url,
+      diagnostic: diag.message,
     };
   } catch (error) {
-    console.error("Direct BPS fetch failed", error instanceof Error ? error.message : "unknown error");
-    return null;
+    const errStr = error instanceof Error ? error.message : "unknown network error";
+    console.error("Direct BPS fetch failed", errStr);
+    return {
+      analysis: {
+        status: "empty",
+        text: "",
+        preview: "",
+        rowCount: 0,
+        columnCount: 0,
+        message: `Koneksi ke BPS API gagal: ${errStr}`,
+      },
+      url,
+      diagnostic: errStr,
+    };
   }
 }
 
@@ -254,6 +337,7 @@ function normalizeTerms(query: string): string[] {
     kemiskinan: ["kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"],
     miskin: ["kemiskinan", "miskin", "penduduk miskin"],
     bps: ["bps", "badan pusat statistik", "susenas"],
+    pendidikan: ["pendidikan", "sekolah", "guru", "murid", "siswa", "lama sekolah"],
   };
   const terms = new Set<string>(normalized ? [normalized] : []);
   for (const token of normalized.split(/\s+/).filter(Boolean)) {
@@ -534,7 +618,7 @@ export function createServer(env: Env): McpServer {
       description:
         "Mencari dataset publik di Portal Satu Data Aceh berdasarkan kata kunci.\nGunakan alat ini setiap kali pengguna meminta informasi statistik atau data dari Aceh.",
       inputSchema: {
-        kata_kunci: z.string().describe("Kata atau frasa pencarian (contoh: 'kemiskinan', 'penduduk', 'sekolah')."),
+        kata_kunci: z.string().describe("Kata atau frasa pencarian (contoh: 'kemiskinan', 'penduduk', 'sekolah', 'pendidikan')."),
       },
     },
     async ({ kata_kunci }) => {
@@ -653,7 +737,7 @@ export function createServer(env: Env): McpServer {
       description:
         "Mengambil data dari DUA sumber (Satu Data Aceh dan BPS) sekaligus dan membandingkan mana yang lebih valid dan terbaru.\n\nGunakan alat ini ketika pengguna meminta data statistik resmi Aceh dan Anda ingin memastikan angka yang paling akurat dan mutakhir.",
       inputSchema: {
-        indikator: z.string().describe("Nama indikator statistik (contoh: 'kemiskinan', 'IPM', 'pengangguran', 'inflasi', 'PDRB', 'gini', 'stunting', 'padi', 'perikanan')."),
+        indikator: z.string().describe("Nama indikator statistik (contoh: 'pendidikan', 'kemiskinan', 'IPM', 'pengangguran', 'inflasi', 'PDRB', 'gini', 'stunting', 'padi', 'perikanan')."),
       },
     },
     async ({ indikator }) => {
@@ -732,20 +816,21 @@ export function createServer(env: Env): McpServer {
           const resultBps = bpsResult.analysis;
           bpsStatus = resultBps.status;
           bpsBaris = resultBps.rowCount;
-          bpsTeks = resultBps.status === "valid" ? (resultBps.preview || resultBps.text) : (resultBps.message || "");
-          const tahunMatches = bpsTeks.match(/\b(20\d{2})\b/g);
-          if (tahunMatches && tahunMatches.length > 0) {
-            bpsPeriode = tahunMatches.reduce((max, y) => (y > max ? y : max), "0");
+          if (resultBps.status === "valid") {
+            bpsTeks = resultBps.preview || resultBps.text;
+            const tahunMatches = bpsTeks.match(/\b(20\d{2})\b/g);
+            if (tahunMatches && tahunMatches.length > 0) {
+              bpsPeriode = tahunMatches.reduce((max, y) => (y > max ? y : max), "0");
+            }
+          } else {
+            bpsTeks = resultBps.message || bpsResult.diagnostic || "Data BPS tidak dapat diambil.";
           }
-        } else if (!env.BPS_API_KEY) {
-          bpsStatus = "api_key_tidak_ada";
-          bpsTeks = "BPS API key belum dikonfigurasi. Hubungi pengelola server.";
         } else {
           bpsStatus = "failed";
-          bpsTeks = "Gagal mengambil data dari BPS API.";
+          bpsTeks = "Gagal menghubungi BPS Web API.";
         }
       } else {
-        bpsTeks = `Tidak ditemukan variabel BPS yang dipetakan untuk indikator: '${trimmed}'.\nDaftar indikator yang didukung: kemiskinan, IPM, pengangguran, inflasi, PDRB, gini, stunting, padi, perikanan, dan lainnya.`;
+        bpsTeks = `Tidak ditemukan variabel BPS yang dipetakan untuk indikator: '${trimmed}'.\nDaftar indikator yang didukung: pendidikan (RLS/HLS/APS), kemiskinan, IPM, pengangguran, inflasi, PDRB, gini, stunting, padi, sayuran, perikanan, peternakan, dan lainnya.`;
       }
 
       bagian.push(
@@ -771,7 +856,7 @@ export function createServer(env: Env): McpServer {
       } else if (sdaStatus === "valid") {
         rekomendasi = "✅ Hanya **Satu Data Aceh** yang memiliki data valid. Gunakan data portal.";
       } else {
-        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini.";
+        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini. Periksa ketersediaan dataset di portal atau periksa BPS API Key Anda.";
       }
 
       const kesimpulan = `---\n## Kesimpulan Perbandingan\n${rekomendasi}`;

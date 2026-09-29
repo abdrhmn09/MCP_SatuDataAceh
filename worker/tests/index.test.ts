@@ -7,12 +7,18 @@ import {
   csvToMarkdownTable,
   datasetYear,
   findCsvLinkInHtml,
+  fetchFromBpsDirect,
   isPublicHttpsUrl,
   parseCsvRows,
   searchDatasets,
   type Env,
 } from "../src/index";
-import { cariVarBpsDariKataKunci, BPS_INDICATOR_MAP, BPS_KEYWORD_TO_VAR } from "../src/bps";
+import {
+  cariVarBpsDariKataKunci,
+  parseBpsDiagnostics,
+  BPS_INDICATOR_MAP,
+  BPS_KEYWORD_TO_VAR,
+} from "../src/bps";
 
 const mockEnv: Env = {
   CATALOG_URL: "https://satudata.acehprov.go.id/data.json",
@@ -139,21 +145,81 @@ describe("Cloudflare Worker adapter & Tools", () => {
     expect(src4).toBeNull();
   });
 
-  it("cariVarBpsDariKataKunci mencari kata kunci BPS dengan benar", () => {
+  // ── PENGUJIAN REGRESI PENTING: KATA KUNCI PENDIDIKAN TIDAK BOLEH MENCOCOKKAN IKAN ──
+  it("cariVarBpsDariKataKunci TIDAK mencocokkan kata 'ikan' saat query 'pendidikan'", () => {
+    const result = cariVarBpsDariKataKunci("pendidikan");
+    expect(result).not.toBeNull();
+    // Harus mencocokkan indikator pendidikan (var 490), BUKAN perikanan (var 1398)
+    expect(result?.var).toBe("490");
+    expect(result?.label).toContain("Lama Sekolah");
+    expect(result?.var).not.toBe("1398");
+  });
+
+  it("cariVarBpsDariKataKunci mencocokkan seluruh variasi kata kunci pendidikan dengan tepat", () => {
+    expect(cariVarBpsDariKataKunci("sekolah")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("guru")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("murid")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("siswa")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("rata-rata lama sekolah")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("harapan lama sekolah")?.var).toBe("495");
+    expect(cariVarBpsDariKataKunci("hls")?.var).toBe("495");
+    expect(cariVarBpsDariKataKunci("rls")?.var).toBe("490");
+    expect(cariVarBpsDariKataKunci("aps")?.var).toBe("490");
+  });
+
+  it("cariVarBpsDariKataKunci tetap mencocokkan kata 'ikan' dan 'perikanan' ke var 1398", () => {
+    expect(cariVarBpsDariKataKunci("ikan")?.var).toBe("1398");
+    expect(cariVarBpsDariKataKunci("perikanan")?.var).toBe("1398");
+    expect(cariVarBpsDariKataKunci("produksi perikanan tangkap")?.var).toBe("1398");
+  });
+
+  it("cariVarBpsDariKataKunci mencari kata kunci non-pendidikan lainnya dengan benar", () => {
     expect(cariVarBpsDariKataKunci("kemiskinan")?.var).toBe("621");
     expect(cariVarBpsDariKataKunci("ipm")?.var).toBe("498");
     expect(cariVarBpsDariKataKunci("tpt")?.var).toBe("529");
     expect(cariVarBpsDariKataKunci("padi")?.var).toBe("1321");
     expect(cariVarBpsDariKataKunci("inflasi")?.var).toBe("1400");
-    expect(cariVarBpsDariKataKunci("kata-kunci-tidak-ada")).toBeNull();
+    expect(cariVarBpsDariKataKunci("kata-kunci-tidak-ada-sama-sekali")).toBeNull();
+  });
+
+  // ── PENGUJIAN DIAGNOSTIK ERROR BPS WEB API ──
+  it("parseBpsDiagnostics mengekstrak error penolakan API key BPS", () => {
+    const errorPayload = {
+      status: "Error",
+      message: "You are not Allowed to take this action. Please re-check your key",
+    };
+    const diag = parseBpsDiagnostics(errorPayload);
+    expect(diag.ok).toBe(false);
+    expect(diag.dataAvailable).toBe(false);
+    expect(diag.message).toContain("You are not Allowed to take this action");
+  });
+
+  it("parseBpsDiagnostics mengekstrak status data tidak tersedia di BPS", () => {
+    const unavailPayload = {
+      status: "OK",
+      "data-availability": "unavailable",
+      message: "Data tidak ditemukan",
+    };
+    const diag = parseBpsDiagnostics(unavailPayload);
+    expect(diag.ok).toBe(false);
+    expect(diag.dataAvailable).toBe(false);
+    expect(diag.message).toContain("Data tidak ditemukan");
+  });
+
+  it("fetchFromBpsDirect memberikan instruksi yang jelas saat API key belum disetel", async () => {
+    const envTanpaKey = { ...mockEnv, BPS_API_KEY: "" };
+    const result = await fetchFromBpsDirect("490", "1100", envTanpaKey);
+    expect(result).not.toBeNull();
+    expect(result?.analysis.message).toContain("BPS_API_KEY belum dikonfigurasi");
+    expect(result?.diagnostic).toContain("npx wrangler secret put BPS_API_KEY");
   });
 
   it("BPS_INDICATOR_MAP memiliki minimal 15 indikator strategis", () => {
     expect(Object.keys(BPS_INDICATOR_MAP).length).toBeGreaterThanOrEqual(15);
   });
 
-  it("BPS_KEYWORD_TO_VAR memiliki minimal 25 kata kunci", () => {
-    expect(Object.keys(BPS_KEYWORD_TO_VAR).length).toBeGreaterThanOrEqual(25);
+  it("BPS_KEYWORD_TO_VAR memiliki minimal 30 kata kunci", () => {
+    expect(Object.keys(BPS_KEYWORD_TO_VAR).length).toBeGreaterThanOrEqual(30);
   });
 
   it("findCsvLinkInHtml mengekstrak tautan CSV dari konten HTML", async () => {
@@ -169,7 +235,6 @@ describe("Cloudflare Worker adapter & Tools", () => {
 
   it("createServer mendaftarkan 5 tool lengkap", () => {
     const server = createServer(mockEnv);
-    // Verifikasi objek server terbentuk tanpa error
     expect(server).toBeDefined();
   });
 });
