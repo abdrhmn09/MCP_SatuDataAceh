@@ -89,12 +89,22 @@ class _RateLimiter:
 # Host hanya dibuka ke publik saat deployment remote memilih MCP_HOST=0.0.0.0.
 _MCP_HOST = os.getenv("MCP_HOST", "127.0.0.1")
 _MCP_PORT = _env_int("MCP_PORT", _env_int("PORT", 8000))
+
+try:
+    from mcp.server.transport_security import TransportSecuritySettings
+    _transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=False
+    )
+except ImportError:
+    _transport_security = None
+
 try:
     mcp = FastMCP(
         "Satu Data Aceh Server",
         instructions="Mencari dataset publik Aceh dan membaca data CSV.",
         host=_MCP_HOST,
         port=_MCP_PORT,
+        transport_security=_transport_security,
     )
 except TypeError:
     # mcp>=2 MCPServer tidak menerima host/port di constructor
