@@ -40,7 +40,12 @@ BPS_INDICATOR_MAP: dict[str, dict[str, str]] = {
         "category": "kemiskinan",
         "defaultTh": "124",
     },
-    # ── Pembangunan Manusia & Pendidikan ─────────────────────────────────────
+    "5832d12b-52b2-44b2-b85c-0a3bd89782f3": {
+        "var": "74",
+        "label": "Indeks Pembangunan Manusia (IPM) Menurut Kabupaten/Kota",
+        "category": "ipm",
+        "defaultTh": "124",
+    },
     "78794e4b-2bbe-45ef-abd1-0a65c2e98702": {
         "var": "245",
         "label": "Rata-rata Lama Sekolah (RLS) Menurut Kabupaten/Kota",
@@ -167,9 +172,16 @@ BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
     "jumlah penduduk miskin": {"var": "41", "label": "Jumlah Penduduk Miskin", "defaultTh": "124"},
     "garis kemiskinan": {"var": "45", "label": "Garis Kemiskinan", "defaultTh": "124"},
 
-    # IPM
-    "ipm": {"var": "245", "label": "Indeks Pembangunan Manusia / RLS", "defaultTh": "124"},
-    "pembangunan manusia": {"var": "245", "label": "Indeks Pembangunan Manusia / RLS", "defaultTh": "124"},
+    # IPM Komposit
+    "ipm": {"var": "74", "label": "Indeks Pembangunan Manusia (IPM)", "defaultTh": "124"},
+    "indeks pembangunan manusia": {"var": "74", "label": "Indeks Pembangunan Manusia (IPM)", "defaultTh": "124"},
+    "pembangunan manusia": {"var": "74", "label": "Indeks Pembangunan Manusia (IPM)", "defaultTh": "124"},
+
+    # Komponen IPM
+    "umur harapan hidup": {"var": "244", "label": "Umur Harapan Hidup (UHH)", "defaultTh": "124"},
+    "uhh": {"var": "244", "label": "Umur Harapan Hidup (UHH)", "defaultTh": "124"},
+    "angka harapan hidup": {"var": "244", "label": "Angka Harapan Hidup", "defaultTh": "124"},
+    "pengeluaran perkapita": {"var": "247", "label": "Pengeluaran Perkapita Disesuaikan", "defaultTh": "124"},
 
     # Ketenagakerjaan
     "pengangguran": {"var": "206", "label": "Tingkat Pengangguran Terbuka", "defaultTh": "124"},

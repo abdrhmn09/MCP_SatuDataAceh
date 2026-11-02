@@ -74,7 +74,7 @@ class ToolTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             result,
-            "https://satudata.acehprov.go.id/api/datasets/dataset-123/datasources/download?tahun=2024",
+            "https://satudata.acehprov.go.id/api/datasets/dataset-123/datasources/download",
         )
 
     def test_url_api_csv_tidak_dibentuk_untuk_host_lain(self):

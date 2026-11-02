@@ -137,7 +137,7 @@ class BpsKeywordTests(unittest.TestCase):
     def test_kata_kunci_ipm_ditemukan(self):
         result = cari_var_bps_dari_kata_kunci("ipm")
         self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "245")
+        self.assertEqual(result["var"], "74")
 
     def test_kata_kunci_kemiskinan_ditemukan(self):
         result = cari_var_bps_dari_kata_kunci("kemiskinan")

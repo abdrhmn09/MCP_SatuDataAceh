@@ -59,6 +59,8 @@ class CsvReadResult:
     column_count: int
     source_url: str
     message: str = ""
+    tahun_min: str = ""
+    tahun_max: str = ""
 
 
 def _env_int(name: str, default: int) -> int:
@@ -112,6 +114,25 @@ except TypeError:
         name="Satu Data Aceh Server",
         instructions="Mencari dataset publik Aceh dan membaca data CSV.",
     )
+def _load_env_file() -> None:
+    for base in [os.getcwd(), os.path.dirname(os.path.abspath(__file__)), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]:
+        env_path = os.path.join(base, ".env")
+        if os.path.isfile(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k, v = k.strip(), v.strip()
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+_load_env_file()
+
 MAX_CSV_BYTES = 5 * 1024 * 1024
 MAX_HTML_BYTES = 2 * 1024 * 1024
 DEFAULT_DATA_YEAR = os.getenv("SATU_DATA_ACEH_DATA_YEAR", "2025")
@@ -201,7 +222,11 @@ async def _cari_link_csv(url_halaman: str) -> str | None:
 
 
 def _url_api_csv(item: dict[str, object], halaman_dataset: str) -> str | None:
-    """Membentuk endpoint CSV resmi portal dari metadata DCAT dataset."""
+    """Membentuk endpoint CSV resmi portal dari metadata DCAT dataset.
+    
+    Mengembalikan URL unduhan lengkap tanpa membatasi pada satu tahun saja,
+    sehingga seluruh observasi multi-tahun dapat diunduh utuh.
+    """
     parsed = urlparse(halaman_dataset)
     if parsed.hostname != "satudata.acehprov.go.id":
         return None
@@ -211,14 +236,7 @@ def _url_api_csv(item: dict[str, object], halaman_dataset: str) -> str | None:
     if not slug:
         return None
 
-    metadata = " ".join(
-        str(item.get(field, "")) for field in ("title", "description", "issued", "modified")
-    )
-    tahun = next(iter(re.findall(r"\b(20\d{2})\b", metadata)), DEFAULT_DATA_YEAR)
-    return (
-        f"https://satudata.acehprov.go.id/api/datasets/{quote(slug, safe='')}"
-        f"/datasources/download?tahun={tahun}"
-    )
+    return f"https://satudata.acehprov.go.id/api/datasets/{quote(slug, safe='')}/datasources/download"
 
 
 def _halaman_dataset(item: dict[str, object]) -> str:
@@ -362,37 +380,143 @@ async def _ambil_langsung_dari_bps(
     return None
 
 
+def _ekstrak_tahun_dari_df(df: pd.DataFrame) -> tuple[str, str]:
+    """Mengekstrak tahun observasi minimum dan maksimum dari DataFrame."""
+    tahun_col = None
+    for col in df.columns:
+        c_clean = str(col).lower().strip()
+        if c_clean in {"tahun", "thn", "year", "th", "periode", "waktu"}:
+            tahun_col = col
+            break
+
+    years: list[int] = []
+    if tahun_col is not None:
+        for val in df[tahun_col].dropna():
+            match = re.search(r"\b(19\d{2}|20[0-2]\d)\b", str(val))
+            if match:
+                years.append(int(match.group(1)))
+
+    if not years:
+        for col in df.columns:
+            for val in df[col].dropna().head(100):
+                match = re.search(r"\b(19\d{2}|20[0-2]\d)\b", str(val))
+                if match:
+                    years.append(int(match.group(1)))
+
+    if years:
+        return str(min(years)), str(max(years))
+    return "", ""
+
+
 def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict[str, object]]:
-    query = query.lower().strip()
+    query_clean = query.lower().strip()
+    if not query_clean:
+        return []
+
     synonyms = {
-        "kemiskinan": {"kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"},
-        "miskin": {"kemiskinan", "miskin", "penduduk miskin"},
-        "bps": {"bps", "badan pusat statistik", "susenas"},
+        "kemiskinan": ["kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"],
+        "miskin": ["kemiskinan", "miskin", "penduduk miskin"],
+        "bps": ["bps", "badan pusat statistik", "susenas"],
+        "pendidikan": ["pendidikan", "sekolah", "guru", "murid", "siswa", "lama sekolah"],
+        "ipm": ["ipm", "indeks pembangunan manusia", "pembangunan manusia"],
     }
-    terms = {query}
-    for token in query.split():
-        terms.update(synonyms.get(token, {token}))
+
+    terms = {query_clean}
+    query_tokens = [t for t in query_clean.split() if len(t) > 1]
+    for token in query_tokens:
+        terms.add(token)
+        for syn in synonyms.get(token, []):
+            terms.add(syn)
+
     scored: list[tuple[int, dict[str, object]]] = []
     for item in katalog:
-        publisher = item.get("publisher", {})
-        nama_penerbit = publisher.get("name", "") if isinstance(publisher, dict) else ""
+        identifier = str(item.get("identifier", ""))
         title = str(item.get("title", "")).lower()
-        metadata = " ".join(
-            str(value)
-            for value in (
-                title,
-                item.get("description", ""),
-                item.get("keyword", []),
-                nama_penerbit,
-                item.get("identifier", ""),
-            )
-        ).lower()
-        matched = [term for term in terms if term in metadata]
-        if matched:
-            score = len(matched) + sum(2 for term in matched if term in title)
+        desc = str(item.get("description", "")).lower()
+        keywords = [str(k).lower() for k in item.get("keyword", []) if isinstance(k, str)]
+        publisher = item.get("publisher", {})
+        nama_penerbit = str(publisher.get("name", "")).lower() if isinstance(publisher, dict) else ""
+
+        score = 0
+
+        # Prioritas dataset strategis yang terkurasi
+        if identifier in BPS_INDICATOR_MAP:
+            score += 25
+
+        # Pencocokan judul
+        if query_clean in title:
+            score += 35
+        for term in terms:
+            if term in title:
+                score += 12
+
+        # Relevansi spasial wilayah Aceh (tingkatkan dataset lokal Aceh, turunkan agregat nasional)
+        if "aceh" in title:
+            score += 15
+        if "kabupaten" in title or "kota" in title:
+            score += 10
+        if ("nasional" in title or "indonesia" in title) and ("nasional" not in query_clean and "indonesia" not in query_clean):
+            score -= 30
+
+        # Penalti untuk dokumen non-indikator statistik (kegiatan teknis/rutin)
+        for noise in ["paud", "sop", "aktivitas", "rutin", "penyelenggaraan", "tata kelola"]:
+            if noise in title and noise not in query_clean:
+                score -= 35
+
+        # Pencocokan kata kunci dan deskripsi
+        for term in terms:
+            if any(term in k for k in keywords):
+                score += 5
+            if term in desc:
+                score += 2
+            if term in nama_penerbit:
+                score += 2
+
+        if score > 0:
             scored.append((score, item))
+
     scored.sort(key=lambda entry: entry[0], reverse=True)
     return [item for _, item in scored[:5]]
+
+
+def _cek_kesepadanan_indikator(judul_sda: str, label_bps: str, query: str) -> tuple[bool, str]:
+    """Memeriksa apakah dataset Satu Data Aceh dan data BPS sepadan secara metodologis dan spasial.
+
+    Mengembalikan (is_comparable, alasan_jika_tidak_sepadan).
+    """
+    judul_lower = judul_sda.lower()
+    bps_lower = label_bps.lower()
+    q_lower = query.lower()
+
+    # 1. Cek tingkat wilayah (Nasional vs Daerah Aceh)
+    if "nasional" in judul_lower and "nasional" not in bps_lower and "nasional" not in q_lower:
+        return False, "Cakupan wilayah berbeda: Satu Data Aceh berisi data agregat Nasional, sedangkan BPS berisi data tingkat Provinsi Aceh / Kabupaten/Kota."
+
+    # 2. Cek dimensi disagregasi (Jenis Kelamin vs Total/Agregat)
+    if ("jenis kelamin" in judul_lower or "gender" in judul_lower) and ("jenis kelamin" not in bps_lower and "gender" not in bps_lower):
+        return False, "Dimensi disagregasi berbeda: Satu Data Aceh terpilah menurut jenis kelamin (L/P), sedangkan data BPS adalah nilai total/komposit agregat."
+    if ("jenis kelamin" in bps_lower or "gender" in bps_lower) and ("jenis kelamin" not in judul_lower and "gender" not in judul_lower):
+        return False, "Dimensi disagregasi berbeda: Data BPS terpilah menurut jenis kelamin, sedangkan Satu Data Aceh adalah nilai total/komposit agregat."
+
+    # 3. Cek indikator komponen vs komposit (misal RLS / HLS vs IPM)
+    indikator_komponen = {
+        "rata-rata lama sekolah": "RLS (Rata-rata Lama Sekolah)",
+        "rata rata lama sekolah": "RLS (Rata-rata Lama Sekolah)",
+        "harapan lama sekolah": "HLS (Harapan Lama Sekolah)",
+        "umur harapan hidup": "UHH (Umur Harapan Hidup)",
+        "pengeluaran per kapita": "Pengeluaran Per Kapita",
+    }
+    for komp_term, komp_label in indikator_komponen.items():
+        if komp_term in judul_lower and ("indeks pembangunan manusia" in bps_lower or "ipm" in bps_lower) and komp_term not in bps_lower:
+            return False, f"Konsep indikator tidak sepadan: Satu Data Aceh berisi komponen sektoral ({komp_label}), sedangkan BPS adalah Indeks Pembangunan Manusia (IPM) komposit."
+        if komp_term in bps_lower and ("indeks pembangunan manusia" in judul_lower or "ipm" in judul_lower) and komp_term not in judul_lower:
+            return False, f"Konsep indikator tidak sepadan: Data BPS berisi komponen sektoral ({komp_label}), sedangkan Satu Data Aceh adalah Indeks Pembangunan Manusia (IPM) komposit."
+
+    # 4. Cek ketidakcocokan konsep administratif
+    if "paud" in judul_lower and "paud" not in bps_lower:
+        return False, "Konsep indikator tidak sepadan: Satu Data Aceh adalah data kegiatan/PAUD, bukan indikator statistik makro BPS."
+
+    return True, "Kedua indikator sepadan untuk dibandingkan."
 
 
 def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult:
@@ -418,10 +542,11 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
             0,
             column_count,
             url,
-            "Sumber CSV hanya berisi header tanpa observasi.",
+            "Sumber CSV hanya berisi header kolom tanpa baris observasi data.",
         )
+    tahun_min, tahun_max = _ekstrak_tahun_dari_df(df)
     preview = df.head(baris_maksimal).to_markdown(index=False)
-    return CsvReadResult("valid", preview, row_count, column_count, url)
+    return CsvReadResult("valid", preview, row_count, column_count, url, "", tahun_min, tahun_max)
 
 
 async def _unduh_csv(url: str, baris_maksimal: int) -> CsvReadResult:
@@ -503,6 +628,11 @@ async def fetch(id: str) -> FetchOutput:
             csv_url = result.source_url
     text = result.preview if result.status == "valid" else result.message
     publisher = item.get("publisher", {})
+    period_display = (
+        f"{result.tahun_min}–{result.tahun_max}"
+        if result.tahun_min and result.tahun_min != result.tahun_max
+        else (result.tahun_max or str(item.get("modified") or item.get("issued") or ""))
+    )
     return FetchOutput(
         id=id,
         title=str(item.get("title", "Dataset Aceh")),
@@ -514,7 +644,9 @@ async def fetch(id: str) -> FetchOutput:
             "landing_url": _halaman_dataset(item),
             "source": source,
             "reference_source": reference_source,
-            "period": item.get("modified") or item.get("issued") or "",
+            "period": period_display,
+            "observation_start": result.tahun_min,
+            "observation_end": result.tahun_max,
             "status": result.status,
             "row_count": result.row_count,
             "column_count": result.column_count,
@@ -546,10 +678,12 @@ async def cari_katalog_data(kata_kunci: str) -> str:
         
     hasil_pencarian = []
     for item in _cocokkan_dataset(katalog, kata_kunci):
-        judul = item.get("title", "")
+        ident = item.get("identifier", "-")
+        judul = item.get("title", "Tanpa Judul")
         publisher = item.get("publisher", {})
+        halaman = _halaman_dataset(item)
         link_csv = _url_csv_item(item)
-        if link_csv == _halaman_dataset(item):
+        if link_csv == halaman:
             link_csv = await _cari_link_csv(link_csv) or link_csv
         penerbit = (
             publisher.get("name", "Instansi Tidak Diketahui")
@@ -557,9 +691,11 @@ async def cari_katalog_data(kata_kunci: str) -> str:
             else "Instansi Tidak Diketahui"
         )
         hasil_pencarian.append(
-            f"- **Judul Dataset**: {judul}\n"
-            f"  **Instansi**: {penerbit}\n"
-            f"  **Tautan CSV**: {link_csv}"
+            f"### {judul}\n"
+            f"- **ID Dataset**: `{ident}`\n"
+            f"- **Instansi / Produsen Data**: {penerbit}\n"
+            f"- **Halaman Portal**: {halaman or '-'}\n"
+            f"- **Tautan Unduh Langsung CSV**: {link_csv or '-'}"
         )
                 
     if not hasil_pencarian:
@@ -588,11 +724,21 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
 
     try:
         result = await _unduh_csv(url, baris_maksimal)
+        if result.status == "header_only":
+            return (
+                f"⚠️ **File CSV Hanya Berisi Header (0 Baris Observasi Data)**\n\n"
+                f"File CSV pada tautan tersebut memiliki struktur kolom ({result.column_count} kolom) "
+                f"tetapi belum memiliki baris data/observasi sama sekali.\n"
+                f"- URL: {url}\n"
+                f"- Silakan gunakan dataset alternatif di portal atau gunakan tool `bandingkan_data` "
+                f"untuk menarik data resmi dari BPS."
+            )
         if result.status != "valid":
             return f"Data tidak tersedia ({result.status}): {result.message}"
         info_tambahan = (
             f"\n\n*(Catatan: Menampilkan {min(result.row_count, baris_maksimal)} "
-            f"baris pertama dari total {result.row_count} baris data)*"
+            f"baris pertama dari total {result.row_count} baris data"
+            f"{f', rentang observasi: {result.tahun_min}–{result.tahun_max}' if result.tahun_min else ''})*"
         )
         return result.preview + info_tambahan
             
@@ -635,29 +781,51 @@ async def bandingkan_data(indikator: str) -> str:
     sda_teks = ""
     sda_judul = "-"
     sda_url = "-"
+    selected_sda_item: dict[str, object] | None = None
+    result_sda: CsvReadResult | None = None
 
     if hasil_sda:
-        item = hasil_sda[0]
-        sda_judul = str(item.get("title", ""))
-        sda_url = _halaman_dataset(item) or _url_csv_item(item)
-        csv_url = _url_csv_item(item)
-        sda_periode = str(item.get("modified") or item.get("issued") or "-")
-        if csv_url:
+        # Cek kandidat teratas (utamakan yang memiliki observasi riil jika kandidat pertama header-only)
+        for item in hasil_sda[:3]:
+            csv_url = _url_csv_item(item)
+            if not csv_url:
+                continue
             try:
-                result_sda = await _unduh_csv(csv_url, 20)
-                sda_status = result_sda.status
-                sda_baris = result_sda.row_count
-                sda_teks = result_sda.preview if result_sda.status == "valid" else result_sda.message
-            except httpx.HTTPError as e:
-                sda_status = "failed"
-                sda_teks = f"Gagal mengunduh: {type(e).__name__}"
-        else:
-            sda_status = "no_url"
-            sda_teks = "Tidak ada URL CSV tersedia di katalog."
+                res = await _unduh_csv(csv_url, 20)
+                if selected_sda_item is None:
+                    selected_sda_item = item
+                    result_sda = res
+                elif res.status == "valid" and result_sda and result_sda.status != "valid":
+                    selected_sda_item = item
+                    result_sda = res
+                    break
+            except httpx.HTTPError:
+                if selected_sda_item is None:
+                    selected_sda_item = item
+                    result_sda = CsvReadResult("failed", "", 0, 0, csv_url, "Gagal mengunduh file CSV.")
+
+        if selected_sda_item and result_sda:
+            sda_judul = str(selected_sda_item.get("title", ""))
+            sda_url = _halaman_dataset(selected_sda_item) or _url_csv_item(selected_sda_item)
+            sda_status = result_sda.status
+            sda_baris = result_sda.row_count
+            if result_sda.status == "valid":
+                sda_periode = (
+                    f"{result_sda.tahun_min}–{result_sda.tahun_max}"
+                    if result_sda.tahun_min and result_sda.tahun_min != result_sda.tahun_max
+                    else (result_sda.tahun_max or "-")
+                )
+                sda_teks = result_sda.preview
+            elif result_sda.status == "header_only":
+                sda_periode = "Tidak ada observasi (0 baris data)"
+                sda_teks = "⚠️ File CSV hanya memiliki header tanpa baris data observasi."
+            else:
+                sda_periode = "-"
+                sda_teks = result_sda.message or "Data tidak tersedia."
 
     bagian.append(
         f"## Sumber 1: Portal Satu Data Aceh\n"
-        f"- **Status Data**: `{sda_status}` | **Baris**: {sda_baris} | **Periode**: {sda_periode}\n"
+        f"- **Status Data**: `{sda_status}` | **Baris Observasi**: {sda_baris} | **Rentang Tahun Observasi**: {sda_periode}\n"
         f"- **Dataset**: {sda_judul}\n"
         f"- **URL**: {sda_url}\n\n"
         f"{sda_teks if sda_teks else '_Data tidak tersedia._'}"
@@ -669,16 +837,19 @@ async def bandingkan_data(indikator: str) -> str:
     bps_baris = 0
     bps_teks = ""
     bps_url_tampil = "-"
-    var_info = cari_var_bps_dari_kata_kunci(indikator)
+    result_bps: CsvReadResult | None = None
 
-    # Jika dataset Satu Data Aceh ditemukan, prioritaskan var dari mapping-nya
-    if hasil_sda:
-        bps_source_dari_katalog = _bps_source(hasil_sda[0])
-        if bps_source_dari_katalog:
+    # Tentukan pemetaan variabel BPS
+    var_info = None
+    if selected_sda_item:
+        bps_source_katalog = _bps_source(selected_sda_item)
+        if bps_source_katalog:
             var_info = {
-                "var": bps_source_dari_katalog["variable"],
+                "var": bps_source_katalog["variable"],
                 "label": sda_judul,
             }
+    if not var_info:
+        var_info = cari_var_bps_dari_kata_kunci(indikator)
 
     if var_info:
         bps_url_tampil = (
@@ -690,10 +861,15 @@ async def bandingkan_data(indikator: str) -> str:
             result_bps, bps_url_actual = bps_result_tuple
             bps_status = result_bps.status
             bps_baris = result_bps.row_count
-            bps_teks = result_bps.preview if result_bps.status == "valid" else result_bps.message
-            # Coba ekstrak tahun terbaru dari preview
-            tahun_bps = re.findall(r"\b(20\d{2})\b", bps_teks)
-            bps_periode = max(tahun_bps) if tahun_bps else "-"
+            if result_bps.status == "valid":
+                bps_periode = (
+                    f"{result_bps.tahun_min}–{result_bps.tahun_max}"
+                    if result_bps.tahun_min and result_bps.tahun_min != result_bps.tahun_max
+                    else (result_bps.tahun_max or "-")
+                )
+                bps_teks = result_bps.preview
+            else:
+                bps_teks = result_bps.message
         elif not BPS_API_KEY:
             bps_status = "api_key_tidak_ada"
             bps_teks = "BPS API key belum dikonfigurasi. Hubungi pengelola server."
@@ -708,33 +884,65 @@ async def bandingkan_data(indikator: str) -> str:
         )
 
     bagian.append(
-        f"## Sumber 2: BPS Web API (Domain 1100 – Provinsi Aceh)\n"
-        f"- **Status Data**: `{bps_status}` | **Baris**: {bps_baris} | **Tahun Terbaru Terdeteksi**: {bps_periode}\n"
+        f"## Sumber 2: BPS Web API (Domain {BPS_DOMAIN} – Provinsi Aceh)\n"
+        f"- **Status Data**: `{bps_status}` | **Baris Observasi**: {bps_baris} | **Rentang Tahun Observasi**: {bps_periode}\n"
         f"- **Indikator BPS**: {var_info['label'] if var_info else '-'} (var: {var_info['var'] if var_info else '-'})\n"
         f"- **Endpoint**: `{bps_url_tampil}`\n\n"
         f"{bps_teks if bps_teks else '_Data tidak tersedia._'}"
     )
 
-    # ── Kesimpulan validitas ─────────────────────────────────────────────────
-    if sda_status == "valid" and bps_status == "valid":
-        # Bandingkan tahun terbaru
-        tahun_sda = re.findall(r"\b(20\d{2})\b", sda_periode + " " + sda_teks)
-        tahun_bps_list = re.findall(r"\b(20\d{2})\b", bps_periode)
-        max_sda = max(tahun_sda) if tahun_sda else "0"
-        max_bps = max(tahun_bps_list) if tahun_bps_list else "0"
-        if max_bps >= max_sda:
-            rekomendasi = f"✅ **BPS** menyediakan data hingga tahun **{max_bps}** (lebih baru atau setara). Gunakan data BPS sebagai referensi utama."
+    # ── Kesimpulan & Validasi Kesepadanan ─────────────────────────────────────
+    rekomendasi = ""
+    label_bps = var_info["label"] if var_info else ""
+    is_sepadan, alasan_kesepadanan = _cek_kesepadanan_indikator(sda_judul, label_bps, indikator)
+
+    if not is_sepadan and sda_status == "valid" and bps_status == "valid":
+        rekomendasi = (
+            f"⚠️ **Incomparable (Tidak Sepadan Secara Langsung)**\n"
+            f"- **Catatan Metodologi**: {alasan_kesepadanan}\n"
+            f"- Data Satu Data Aceh ('{sda_judul}') dan data BPS ('{label_bps}') tidak mengukur unit/cakupan yang sama, "
+            f"sehingga perbandingan angka absolut tidak dapat dilakukan secara langsung.\n"
+            f"- **Rekomendasi**: Gunakan BPS Web API untuk data agregat/komposit wilayah Provinsi Aceh, "
+            f"atau gunakan Satu Data Aceh jika Anda secara khusus membutuhkan dimensi disagregasi/sektoral tersebut."
+        )
+    elif sda_status == "valid" and bps_status == "valid":
+        max_sda = int(result_sda.tahun_max) if result_sda and result_sda.tahun_max.isdigit() else 0
+        max_bps = int(result_bps.tahun_max) if result_bps and result_bps.tahun_max.isdigit() else 0
+
+        if max_bps > max_sda and max_bps > 0:
+            rekomendasi = (
+                f"✅ **BPS** menyediakan data observasi terbaru (tahun **{max_bps}**), "
+                f"sedangkan **Satu Data Aceh** menyediakan data hingga tahun **{max_sda}** "
+                f"({result_sda.row_count} baris observasi, rentang {sda_periode}).\n"
+                f"- **Rekomendasi**: Gunakan **BPS** untuk angka rilis termutakhir dan **Satu Data Aceh** untuk analisis deret waktu historis."
+            )
+        elif max_sda > max_bps and max_sda > 0:
+            rekomendasi = (
+                f"✅ **Satu Data Aceh** menyediakan data observasi hingga tahun **{max_sda}** "
+                f"(lebih baru dibanding BPS tahun **{max_bps}**).\n"
+                f"- **Rekomendasi**: Gunakan data portal Satu Data Aceh sebagai referensi utama."
+            )
         else:
-            rekomendasi = f"✅ **Satu Data Aceh** menyediakan data hingga tahun **{max_sda}** (lebih baru). Gunakan data portal sebagai referensi utama."
+            rekomendasi = (
+                f"✅ Kedua sumber menyediakan data yang sepadan dengan tahun observasi setara (**{max_bps or max_sda}**).\n"
+                f"- **Rekomendasi**: Angka BPS dan Satu Data Aceh dapat saling melengkapi."
+            )
     elif bps_status == "valid":
-        rekomendasi = "✅ Hanya **BPS** yang memiliki data valid. Gunakan data BPS."
+        alasan_sda = "hanya berisi header tanpa baris data" if sda_status == "header_only" else "tidak tersedia"
+        rekomendasi = (
+            f"✅ **BPS Web API** merupakan satu-satunya sumber dengan data valid untuk indikator ini "
+            f"(tahun observasi {bps_periode}).\n"
+            f"- Dataset di Portal Satu Data Aceh {alasan_sda}."
+        )
     elif sda_status == "valid":
-        rekomendasi = "✅ Hanya **Satu Data Aceh** yang memiliki data valid. Gunakan data portal."
+        rekomendasi = (
+            f"✅ Hanya **Satu Data Aceh** yang memiliki data valid untuk indikator ini (tahun observasi {sda_periode}).\n"
+            f"- Gunakan data portal Satu Data Aceh."
+        )
     else:
-        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini."
+        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini. Periksa ketersediaan dataset di portal atau verifikasi BPS API Key Anda."
 
     kesimpulan = f"---\n## Kesimpulan Perbandingan\n{rekomendasi}"
-
     return "\n\n---\n\n".join(bagian) + "\n\n" + kesimpulan
 
 
