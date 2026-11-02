@@ -61,6 +61,8 @@ class CsvReadResult:
     message: str = ""
     tahun_min: str = ""
     tahun_max: str = ""
+    kolom_indikator: str = ""
+    satuan: str = ""
 
 
 def _env_int(name: str, default: int) -> int:
@@ -408,6 +410,43 @@ def _ekstrak_tahun_dari_df(df: pd.DataFrame) -> tuple[str, str]:
     return "", ""
 
 
+def _deteksi_kolom_indikator(df: pd.DataFrame) -> tuple[str, str]:
+    """Mendeteksi nama kolom indikator numerik utama dan satuan (jika ada)."""
+    satuan = ""
+    kolom_abaikan = {
+        "id", "uuid", "tahun", "thn", "year", "periode", "waktu",
+        "kode", "bps_kode", "kemendagri_kode", "tingkat_penyajian",
+        "bps_kode_provinsi", "kemendagri_kode_provinsi", "bps_nama_provinsi", "kemendagri_nama_provinsi",
+        "bps_kode_kabupaten_kota", "kemendagri_kode_kabupaten_kota", "bps_nama_kabupaten_kota", "kemendagri_nama_kabupaten_kota",
+        "bps_kode_kecamatan", "kemendagri_kode_kecamatan", "bps_nama_kecamatan", "kemendagri_nama_kecamatan",
+        "bps_kode_desa", "kemendagri_kode_desa", "bps_nama_desa", "kemendagri_nama_desa",
+        "nama_wilayah", "kode_wilayah", "kategori", "label",
+    }
+    
+    # Cari kolom satuan eksplisit
+    for col in df.columns:
+        if str(col).lower().strip() in {"satuan", "unit"}:
+            vals = df[col].dropna().unique()
+            if len(vals) > 0:
+                satuan = str(vals[0])
+            break
+
+    # Cari kolom indikator/nilai numerik
+    kandidat_indikator = []
+    for col in df.columns:
+        col_clean = str(col).lower().strip()
+        if col_clean in kolom_abaikan or col_clean in {"satuan", "unit"}:
+            continue
+        # Cek apakah tipe data numerik
+        if pd.api.types.is_numeric_dtype(df[col]):
+            kandidat_indikator.append(str(col))
+        elif df[col].dropna().apply(lambda x: str(x).replace(".", "", 1).replace(",", "", 1).isdigit()).all():
+            kandidat_indikator.append(str(col))
+
+    kolom_terpilih = kandidat_indikator[0] if kandidat_indikator else ""
+    return kolom_terpilih, satuan
+
+
 def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict[str, object]]:
     query_clean = query.lower().strip()
     if not query_clean:
@@ -419,6 +458,8 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
         "bps": ["bps", "badan pusat statistik", "susenas"],
         "pendidikan": ["pendidikan", "sekolah", "guru", "murid", "siswa", "lama sekolah"],
         "ipm": ["ipm", "indeks pembangunan manusia", "pembangunan manusia"],
+        "pengangguran": ["pengangguran", "tpt", "angkatan kerja"],
+        "kesehatan": ["kesehatan", "stunting", "gizi", "puskesmas", "rumah sakit"],
     }
 
     terms = {query_clean}
@@ -441,11 +482,15 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
 
         # Prioritas dataset strategis yang terkurasi
         if identifier in BPS_INDICATOR_MAP:
-            score += 25
+            score += 30
 
-        # Pencocokan judul
+        # Prioritas produsen data statistik utama
+        if any(prod in nama_penerbit for prod in ["bps", "badan pusat statistik", "bappeda"]):
+            score += 15
+
+        # Pencocokan judul (exact match phrase bernilai tertinggi)
         if query_clean in title:
-            score += 35
+            score += 40
         for term in terms:
             if term in title:
                 score += 12
@@ -456,17 +501,17 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
         if "kabupaten" in title or "kota" in title:
             score += 10
         if ("nasional" in title or "indonesia" in title) and ("nasional" not in query_clean and "indonesia" not in query_clean):
-            score -= 30
+            score -= 35
 
-        # Penalti untuk dokumen non-indikator statistik (kegiatan teknis/rutin)
-        for noise in ["paud", "sop", "aktivitas", "rutin", "penyelenggaraan", "tata kelola"]:
+        # Penalti untuk dokumen non-indikator statistik (kegiatan internal, sop, tata kelola belanja)
+        for noise in ["paud", "sop", "aktivitas", "rutin", "penyelenggaraan", "tata kelola", "belanja", "barang jasa", "pengadaan"]:
             if noise in title and noise not in query_clean:
-                score -= 35
+                score -= 40
 
         # Pencocokan kata kunci dan deskripsi
         for term in terms:
             if any(term in k for k in keywords):
-                score += 5
+                score += 6
             if term in desc:
                 score += 2
             if term in nama_penerbit:
@@ -545,8 +590,11 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
             "Sumber CSV hanya berisi header kolom tanpa baris observasi data.",
         )
     tahun_min, tahun_max = _ekstrak_tahun_dari_df(df)
+    kolom_ind, satuan = _deteksi_kolom_indikator(df)
     preview = df.head(baris_maksimal).to_markdown(index=False)
-    return CsvReadResult("valid", preview, row_count, column_count, url, "", tahun_min, tahun_max)
+    return CsvReadResult(
+        "valid", preview, row_count, column_count, url, "", tahun_min, tahun_max, kolom_ind, satuan
+    )
 
 
 async def _unduh_csv(url: str, baris_maksimal: int) -> CsvReadResult:
@@ -599,23 +647,40 @@ async def fetch(id: str) -> FetchOutput:
     """Mengambil isi ringkas CSV dataset berdasarkan identifier hasil search."""
     if not await _rate_limiter.allow():
         raise ValueError("Batas permintaan tercapai. Coba lagi beberapa saat.")
+    
+    clean_id = str(id).strip() if id else ""
+    if not clean_id:
+        raise ValueError("Parameter identifier dataset tidak boleh kosong.")
+
     katalog = await muat_katalog()
-    item = next((entry for entry in katalog if str(entry.get("identifier", "")) == id), None)
+    item = next((entry for entry in katalog if str(entry.get("identifier", "")).strip() == clean_id), None)
     if item is None:
-        raise ValueError("Dataset tidak ditemukan untuk identifier tersebut.")
+        raise ValueError(
+            f"Dataset dengan ID '{clean_id}' tidak ditemukan di katalog Satu Data Aceh. "
+            f"Gunakan tool 'search' atau 'cari_katalog_data' untuk menemukan identifier yang valid."
+        )
+
     csv_url = _url_csv_item(item)
     if not csv_url:
-        raise ValueError("Dataset tidak memiliki URL CSV yang dapat diakses.")
+        raise ValueError(
+            f"Dataset '{clean_id}' ({item.get('title', 'Dataset')}) tidak memiliki tautan distribusi CSV yang valid."
+        )
+
     try:
         result = await _unduh_csv(csv_url, 50)
-    except httpx.HTTPError as error:
-        logger.warning("Gagal mengunduh CSV dataset %s (%s): %s", id, csv_url, error)
+    except httpx.TimeoutException:
+        logger.warning("Timeout saat mengunduh CSV dataset %s (%s)", clean_id, csv_url)
         result = CsvReadResult(
-            "failed", "", 0, 0, csv_url, "Gagal mengunduh file CSV dari URL tersebut."
+            "timeout", "", 0, 0, csv_url, "Koneksi ke server portal Satu Data Aceh timeout saat mengunduh CSV."
+        )
+    except httpx.HTTPError as error:
+        logger.warning("Gagal mengunduh CSV dataset %s (%s): %s", clean_id, csv_url, error)
+        result = CsvReadResult(
+            "failed", "", 0, 0, csv_url, f"Gagal mengunduh file CSV dari portal (HTTP {type(error).__name__})."
         )
     except (UnicodeDecodeError, ValueError) as error:
-        logger.warning("Format CSV tidak valid untuk dataset %s (%s): %s", id, csv_url, error)
-        result = CsvReadResult("invalid", "", 0, 0, csv_url, "Format CSV tidak valid.")
+        logger.warning("Format CSV tidak valid untuk dataset %s (%s): %s", clean_id, csv_url, error)
+        result = CsvReadResult("invalid", "", 0, 0, csv_url, "Format file bukan CSV valid atau encoding tidak didukung.")
 
     source = "Satu Data Aceh"
     reference_source = _halaman_dataset(item)
@@ -626,6 +691,7 @@ async def fetch(id: str) -> FetchOutput:
             source = "BPS"
             reference_source = bps_source["reference_url"]
             csv_url = result.source_url
+
     text = result.preview if result.status == "valid" else result.message
     publisher = item.get("publisher", {})
     period_display = (
@@ -634,7 +700,7 @@ async def fetch(id: str) -> FetchOutput:
         else (result.tahun_max or str(item.get("modified") or item.get("issued") or ""))
     )
     return FetchOutput(
-        id=id,
+        id=clean_id,
         title=str(item.get("title", "Dataset Aceh")),
         text=text,
         url=_halaman_dataset(item) or csv_url,
@@ -647,6 +713,8 @@ async def fetch(id: str) -> FetchOutput:
             "period": period_display,
             "observation_start": result.tahun_min,
             "observation_end": result.tahun_max,
+            "kolom_indikator": result.kolom_indikator,
+            "satuan": result.satuan,
             "status": result.status,
             "row_count": result.row_count,
             "column_count": result.column_count,
@@ -735,10 +803,13 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
             )
         if result.status != "valid":
             return f"Data tidak tersedia ({result.status}): {result.message}"
+        info_indikator = f", kolom nilai: '{result.kolom_indikator}'" if result.kolom_indikator else ""
+        info_satuan = f" ({result.satuan})" if result.satuan else ""
         info_tambahan = (
             f"\n\n*(Catatan: Menampilkan {min(result.row_count, baris_maksimal)} "
             f"baris pertama dari total {result.row_count} baris data"
-            f"{f', rentang observasi: {result.tahun_min}–{result.tahun_max}' if result.tahun_min else ''})*"
+            f"{f', rentang observasi: {result.tahun_min}–{result.tahun_max}' if result.tahun_min else ''}"
+            f"{info_indikator}{info_satuan})*"
         )
         return result.preview + info_tambahan
             

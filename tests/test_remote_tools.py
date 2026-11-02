@@ -107,6 +107,43 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.metadata["source"], "BPS")
         self.assertEqual(result.text, "| kab | miskin |")
 
+    async def test_fetch_identifier_kosong_ditolak(self):
+        with self.assertRaises(ValueError) as ctx:
+            await fetch("   ")
+        self.assertIn("tidak boleh kosong", str(ctx.exception))
+
+    async def test_fetch_metadata_kolom_indikator(self):
+        katalog = [
+            {
+                "identifier": "dataset-ipm",
+                "title": "IPM Aceh",
+                "landingPage": "https://satudata.acehprov.go.id/datasets/dataset-ipm",
+                "distribution": [],
+            }
+        ]
+        mock_res = CsvReadResult(
+            status="valid",
+            preview="| tahun | ipm |\n| 2023 | 74.0 |",
+            row_count=1,
+            column_count=2,
+            source_url="https://example.com/data.csv",
+            message="",
+            tahun_min="2023",
+            tahun_max="2023",
+            kolom_indikator="ipm",
+            satuan="Poin",
+        )
+        with patch("src.server.muat_katalog", new=AsyncMock(return_value=katalog)), patch(
+            "src.server._unduh_csv",
+            new=AsyncMock(return_value=mock_res),
+        ):
+            result = await fetch("dataset-ipm")
+
+        self.assertEqual(result.metadata["kolom_indikator"], "ipm")
+        self.assertEqual(result.metadata["satuan"], "Poin")
+        self.assertEqual(result.metadata["period"], "2023")
+
 
 if __name__ == "__main__":
     unittest.main()
+
