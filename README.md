@@ -66,7 +66,7 @@ docker compose up -d --build
 Contoh konfigurasi lengkap ada di [deploy/nginx.conf](deploy/nginx.conf), termasuk route akun, explorer, SSE, Streamable HTTP, CORS dan header. Untuk landing page Nginx statis:
 
 ```bash
-sudo install -m 644 public/index.html /var/www/mcpsatudataaceh.web.id/index.html
+sudo install -m 644 public/index.html public/app.js public/styles.css /var/www/mcpsatudataaceh.web.id/
 sudo install -m 644 deploy/nginx.conf /etc/nginx/sites-available/mcpsatudataaceh.web.id
 sudo nginx -t && sudo systemctl reload nginx
 ```
@@ -162,4 +162,4 @@ npm run typecheck
 npm test
 ```
 
-Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. `npm run test:live` terpisah dan memerlukan key di environment. UI di `public/index.html` dan salinan paket `src/static/index.html` harus identik. Verifikasi email tersedia; OAuth otomatis, reset password lewat email, dan MFA belum tersedia.
+Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. `npm run test:live` terpisah dan memerlukan key di environment. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Verifikasi email tersedia; OAuth otomatis, reset password lewat email, dan MFA belum tersedia.

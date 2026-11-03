@@ -36,7 +36,8 @@ class BpsApiTests(unittest.TestCase):
 
     def test_landing_artifacts_identical(self):
         root = Path(__file__).parents[1]
-        self.assertEqual((root/'public/index.html').read_bytes(), (root/'src/static/index.html').read_bytes())
+        for name in ('index.html','app.js','styles.css'):
+            self.assertEqual((root/'public'/name).read_bytes(), (root/'src/static'/name).read_bytes())
 
 
 class BpsIsolationTests(unittest.IsolatedAsyncioTestCase):

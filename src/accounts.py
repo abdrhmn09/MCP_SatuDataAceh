@@ -171,7 +171,14 @@ class Vault:
 
     def save_key(self, uid, service, value):
         if service not in {'bps','sdgs'}: raise ValueError('Layanan tidak dikenal.')
-        if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9._~-]{8,256}',value): raise ValueError('Format API key tidak valid.')
+        if not isinstance(value,str): raise ValueError('API key harus berupa teks.')
+        value=value.strip()
+        if re.match(r'(?i)^(https?://|bearer\s|authorization\s*:)',value):
+            raise ValueError('Tempel nilai API key saja, bukan URL atau header Authorization.')
+        if re.search(r'\s',value):
+            raise ValueError('Ada spasi atau baris baru di tengah key. Salin ulang nilai key dari akun BPS.')
+        if not re.fullmatch(r'[A-Za-z0-9._~+/=-]{8,512}',value):
+            raise ValueError('Format key belum sesuai. Gunakan 8–512 karakter token dan salin hanya nilai key.')
         nonce = secrets.token_bytes(12)
         ciphertext = nonce + self.cipher.encrypt(nonce,value.encode(),f'{uid}:{service}'.encode())
         with self.db() as db:

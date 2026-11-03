@@ -2,6 +2,7 @@
 import asyncio
 import hmac
 import json
+import logging
 import os
 import re
 import time
@@ -17,6 +18,8 @@ try:
 except ImportError:
     from accounts import digest, get_vault, principal
     from mailer import send_verification, MailUnavailable
+
+logger = logging.getLogger(__name__)
 
 _hash_slots = asyncio.Semaphore(2)
 _mail_slots = asyncio.Semaphore(2)
@@ -115,8 +118,12 @@ async def account_route(request):
         if action=='credentials':
             service=body.get('service','bps')
             if body.get('delete') is True: vault.delete_key(uid,service)
-            else: vault.save_key(uid,service,body.get('key'))
-            return result({'ok':True,'message':'Credential diperbarui.'})
+            else:
+                try: vault.save_key(uid,service,body.get('key'))
+                except ValueError as error:
+                    logger.info('Credential validation rejected user_ref=%s',digest(uid)[:12])
+                    return result({'error':'invalid_api_key','message':str(error)},400)
+            return result({'ok':True,'message':'Credential diperbarui.','credentials':vault.profile(uid)['credentials']})
         if action=='tokens':
             if body.get('revoke'):
                 vault.revoke_token(uid,body['revoke'])

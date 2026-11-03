@@ -14,7 +14,7 @@ export function credential(headers: Headers, fallback = "", service = "bps"): st
     key = auth.slice(7);
   }
   key = key ?? fallback;
-  if (!/^[A-Za-z0-9._~-]{8,256}$/.test(key)) throw new Error("API key belum tersedia atau format tidak valid. Gunakan header X-BPS-API-Key atau Authorization: Bearer.");
+  if (!/^[A-Za-z0-9._~+\/=-]{8,512}$/.test(key)) throw new Error("API key belum tersedia atau format tidak valid. Gunakan header X-BPS-API-Key atau Authorization: Bearer.");
   return key;
 }
 

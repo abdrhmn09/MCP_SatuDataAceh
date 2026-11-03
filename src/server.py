@@ -991,6 +991,16 @@ async def landing_page(_: Request):
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@mcp.custom_route("/app.js", methods=["GET"], include_in_schema=False)
+async def app_script(_: Request):
+    return FileResponse(Path(__file__).parent / "static" / "app.js", media_type="application/javascript", headers={"Cache-Control":"no-cache"})
+
+
+@mcp.custom_route("/styles.css", methods=["GET"], include_in_schema=False)
+async def app_styles(_: Request):
+    return FileResponse(Path(__file__).parent / "static" / "styles.css", media_type="text/css", headers={"Cache-Control":"no-cache"})
+
+
 @mcp.custom_route("/api/bps/endpoints", methods=["GET"], include_in_schema=False)
 async def bps_endpoint_catalog(request: Request):
     try:

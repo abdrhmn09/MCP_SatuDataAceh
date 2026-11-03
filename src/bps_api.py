@@ -21,7 +21,7 @@ def credential(headers, fallback="", service="bps") -> str:
             raise ValueError("Gunakan Authorization: Bearer API_KEY_BPS.")
         key = authorization[7:]
     key = key if key is not None else fallback
-    if not key or not re.fullmatch(r"[A-Za-z0-9._~-]{8,256}", key):
+    if not key or not re.fullmatch(r"[A-Za-z0-9._~+/=-]{8,512}", key):
         raise ValueError("API key belum tersedia atau format tidak valid. Gunakan header X-BPS-API-Key atau Authorization: Bearer.")
     return key
 

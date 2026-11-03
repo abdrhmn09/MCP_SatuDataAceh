@@ -228,3 +228,18 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         upgraded=accounts.Vault(self.vault.path,self.key)
         self.assertIsNone(upgraded.identity(old_token,'mcp'))
         with self.assertRaises(ValueError):upgraded.login('alice@example.test','correct horse battery staple')
+
+    async def test_key_paste_normalization_and_rejected_input_does_not_overwrite(self):
+        _,profile=await self.register_login()
+        valid='synthetic+base64/key=1234'
+        r=await self.client.post('/api/account/credentials',json={'service':'bps','key':' \n'+valid+'\t '})
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(self.vault.get_key(profile['user']['id']),valid)
+        self.assertEqual(r.json()['credentials'][0]['service'],'bps')
+        self.assertNotIn(valid,r.text)
+        for value in ['https://example.com/key','Bearer copied-key-value','key with whitespace','short']:
+            r=await self.client.post('/api/account/credentials',json={'service':'bps','key':value})
+            self.assertEqual(r.status_code,400)
+            self.assertEqual(r.json()['error'],'invalid_api_key')
+            self.assertTrue(r.json()['message'])
+            self.assertEqual(self.vault.get_key(profile['user']['id']),valid)
