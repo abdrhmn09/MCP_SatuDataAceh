@@ -119,3 +119,21 @@ class ReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('api_key_tidak_ada',result)
         self.assertIn('2025',result)
         self.assertIn('Simpan API key BPS',result)
+
+    async def test_monthly_measurement_column_is_checked_against_yoy_label(self):
+        item={'identifier':'e8c8605b-5ce1-4637-be23-9108837e89c9','title':'Inflasi Provinsi Aceh','landingPage':URL}
+        sda=server._analisis_csv('tahun,tingkat_inflasi_bulanan,satuan\n2025,2,Persen\n',URL,20)
+        bps=server._analisis_csv('tahun,nilai,satuan\n2025,3,Persen\n',URL,20)
+        bps.indikator_bps='Inflasi Tahun ke Tahun (y-on-y)'
+        with patch.object(server,'muat_katalog',AsyncMock(return_value=[item])),patch.object(server,'_unduh_csv',AsyncMock(return_value=sda)),patch.object(server,'_ambil_langsung_dari_bps',AsyncMock(return_value=(bps,URL))):
+            result=await server.bandingkan_data('inflasi')
+        self.assertIn('Konsep inflasi tidak sepadan',result)
+        self.assertIn('Tidak Sepadan',result)
+
+    async def test_coverage_uses_populated_region_column_and_reports_missing_rows(self):
+        result=server._analisis_csv('nama_wilayah,bps_nama_provinsi,tahun,nilai\n,Aceh,2025,2\n,,2025,3\n',URL,20)
+        region=result.coverage['regions']
+        self.assertEqual(region['column'],'bps_nama_provinsi')
+        self.assertEqual(region['values'],['aceh'])
+        self.assertEqual(region['missing_rows'],1)
+        self.assertFalse(region['complete'])

@@ -815,7 +815,7 @@ export function createServer(env: Env, clientKey = "local"): McpServer {
         `## Sumber 2: BPS Web API (Domain ${domain})\n- **Status Data**: \`${bpsStatus}\` | **Baris**: ${bpsBaris} | **Tahun pada Respons**: ${bpsPeriode}\n- **Indikator BPS**: ${varInfo ? varInfo.label : "-"} (var: ${varInfo ? varInfo.var : "-"})\n- **Endpoint**: \`${bpsUrlTampil}\`\n\n${bpsTeks ? bpsTeks : "_Data tidak tersedia._"}`,
       );
 
-      const comparison = compareIndicators(sdaJudul, varInfo?.label || "", sdaAnalysis?.unit, bpsAnalysis?.unit);
+      const comparison = compareIndicators(sdaJudul+' '+(sdaAnalysis?.quality?.value_column||'').replaceAll('_',' '), varInfo?.label || "", sdaAnalysis?.unit, bpsAnalysis?.unit);
       const coverage=auditCoverage(sdaAnalysis,bpsAnalysis);
       let rekomendasi=sdaStatus==='valid' && bpsStatus==='valid'
         ? comparison.status!=='comparable' ? `**${comparison.status==='incomparable'?'Incomparable (Tidak Sepadan)':'Kesepadanan Belum Dapat Dipastikan'}**: ${comparison.reason}` : coverage.reason

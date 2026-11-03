@@ -727,7 +727,7 @@ def _cek_kesepadanan_indikator(
     judul_lower = judul_sda.lower()
     bps_lower = label_bps.lower()
     def inflation_period(text):
-        for name, pattern in [('yoy',r'y-on-y|yoy|tahun ke tahun'),('mom',r'm-to-m|mtm|bulan ke bulan'),('ytd',r'y-to-d|ytd|tahun kalender')]:
+        for name, pattern in [('yoy',r'y-on-y|yoy|tahun ke tahun'),('mom',r'm-to-m|mtm|bulan ke bulan|\bbulanan\b'),('ytd',r'y-to-d|ytd|tahun kalender')]:
             if re.search(pattern,text): return name
         return ''
     period_a, period_b = inflation_period(judul_lower), inflation_period(bps_lower)
@@ -1418,7 +1418,7 @@ async def bandingkan_data(indikator: str) -> str:
     # ── Kesimpulan & Validasi Kesepadanan ─────────────────────────────────────
     rekomendasi = ""
     is_sepadan, alasan_kesepadanan = _cek_kesepadanan_indikator(
-        sda_judul,
+        sda_judul + (' ' + result_sda.kolom_indikator.replace('_',' ') if result_sda else ''),
         label_bps,
         indikator,
         result_sda.satuan if result_sda else "",

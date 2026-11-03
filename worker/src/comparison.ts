@@ -8,7 +8,7 @@ export interface Comparability {
 export function compareIndicators(title: string, label: string, unitA = "", unitB = ""): Comparability {
   const a = title.toLowerCase(), b = label.toLowerCase();
   const reject = (reason: string): Comparability => ({ status: "incomparable", reason });
-  const period=(s:string)=>/y-on-y|yoy|tahun ke tahun/.test(s)?'yoy':/m-to-m|mtm|bulan ke bulan/.test(s)?'mom':/y-to-d|ytd|tahun kalender/.test(s)?'ytd':'';
+  const period=(s:string)=>/y-on-y|yoy|tahun ke tahun/.test(s)?'yoy':/m-to-m|mtm|bulan ke bulan|\bbulanan\b/.test(s)?'mom':/y-to-d|ytd|tahun kalender/.test(s)?'ytd':'';
   if(period(a) && period(b) && period(a)!==period(b)) return reject('Konsep inflasi tidak sepadan.');
   if(a.includes('inflasi') && /ihk|indeks harga konsumen/.test(b) || b.includes('inflasi') && /ihk|indeks harga konsumen/.test(a)) return reject('Indeks Harga Konsumen dan laju inflasi bukan ukuran yang sama.');
   const base=(s:string)=>s.match(/\b((?:19|20)\d{2})\s*=\s*100/)?.[1]||'';

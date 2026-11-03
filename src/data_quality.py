@@ -38,9 +38,11 @@ def summarize(frame, value_column, limit):
     coverage = {}
     coverage['years'] = {'column': columns[year_index] if year_index is not None else None, 'values': years[:100], 'complete': len(years) <= 100}
     for dimension, aliases in [('regions', REGIONS), ('periods', ('periode', 'bulan', 'triwulan', 'semester')), ('categories', ('kategori', 'jenis_kelamin', 'jenis kelamin'))]:
-        col = next((col for alias in aliases for col in columns if col.lower().strip() == alias), None)
+        candidates = [col for alias in aliases for col in columns if col.lower().strip() == alias]
+        col = next((col for col in candidates if any(row[columns.index(col)] is not None for row in finite)), candidates[0] if candidates else None)
         values = sorted({str(row[columns.index(col)]).strip().lower() for row in finite if row[columns.index(col)] is not None}) if col else []
-        coverage[dimension] = {'column': col, 'values': values[:100], 'complete': len(values) <= 100}
+        missing_rows = sum(row[columns.index(col)] is None for row in finite) if col else 0
+        coverage[dimension] = {'column': col, 'values': values[:100], 'complete': len(values) <= 100 and not missing_rows, 'missing_rows': missing_rows}
     return {
         'columns': columns, 'rows': rows, 'returned_rows': len(rows), 'total_rows': len(cleaned), 'truncated': len(rows) < len(cleaned),
     }, {

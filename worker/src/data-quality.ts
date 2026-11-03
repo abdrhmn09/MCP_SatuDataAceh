@@ -1,7 +1,7 @@
 const missing = new Set(['','nan','null','none','na','n/a','-','...','inf','-inf','+inf','infinity','-infinity']);
 export const cleanCell = (value:string):string|null => missing.has(value.trim().toLowerCase()) ? null : value;
 const numeric = (value:string|null):boolean => value !== null && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim()) && Number.isFinite(Number(value));
-export interface Coverage { column:string|null; values:string[]; complete:boolean }
+export interface Coverage { column:string|null; values:string[]; complete:boolean; missing_rows?:number }
 export interface Quality { missing_by_column:Record<string,number>; missing_cells:number; value_column:string|null; finite_value_count:number; missing_value_count:number|null; non_numeric_value_count:number|null; latest_value_year:string|null }
 export interface StructuredCsv { columns:string[]; rows:Record<string,string|number|null>[]; returned_rows:number; total_rows:number; truncated:boolean }
 
@@ -21,9 +21,11 @@ export function summarizeCsv(input:string[][],limit:number) {
   const uniqueYears=[...new Set(years)];
   coverage.years={column:columns[year]||null,values:uniqueYears.slice(0,100),complete:uniqueYears.length<=100};
   for(const [dimension,names] of Object.entries(aliases)) {
-    const col=names.map(name=>header.indexOf(name)).find(i=>i>=0)??-1;
+    const candidates=names.map(name=>header.indexOf(name)).filter(i=>i>=0);
+    const col=candidates.find(i=>finite.some(row=>row[i]!==null))??candidates[0]??-1;
     const values=col<0?[]:[...new Set(finite.flatMap(row=>row[col]===null?[]:[row[col]!.trim().toLowerCase()]))].sort();
-    coverage[dimension]={column:columns[col]||null,values:values.slice(0,100),complete:values.length<=100};
+    const missingRows=col<0?0:finite.filter(row=>row[col]===null).length;
+    coverage[dimension]={column:columns[col]||null,values:values.slice(0,100),complete:values.length<=100 && missingRows===0,missing_rows:missingRows};
   }
   const data:StructuredCsv={columns,rows:rows.slice(0,limit).map(row=>Object.fromEntries(columns.map((col,i)=>[col,i===valueIndex && numeric(row[i])?Number(row[i]):row[i]]))),returned_rows:Math.min(rows.length,limit),total_rows:rows.length,truncated:rows.length>limit};
   return {data,quality,coverage};
