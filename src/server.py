@@ -118,6 +118,14 @@ def _bps_api_key():
     return BPS_API_KEY
 
 
+def _bps_key_available():
+    """An account without a saved key can still read the public portal audit."""
+    try:
+        return bool(_bps_api_key())
+    except ValueError:
+        return False
+
+
 class SearchResult(BaseModel):
     id: str
     title: str
@@ -459,7 +467,7 @@ async def _ambil_langsung_dari_bps(
     Digunakan oleh audit bandingkan_data; periode diperiksa melalui metadata BPS.
     Mengembalikan (CsvReadResult, url_bps) atau None jika gagal / API key tidak ada.
     """
-    if not _bps_api_key():
+    if not _bps_key_available():
         return None
     from .bps_periods import discover_periods
     key = _bps_api_key()
@@ -1386,7 +1394,7 @@ async def bandingkan_data(indikator: str) -> str:
                 bps_teks = result_bps.preview
             else:
                 bps_teks = result_bps.message
-        elif not _bps_api_key():
+        elif not _bps_key_available():
             bps_status = "api_key_tidak_ada"
             bps_teks = "Simpan API key BPS pada halaman API key akun Anda."
         else:

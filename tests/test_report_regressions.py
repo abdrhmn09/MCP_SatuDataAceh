@@ -110,3 +110,12 @@ class ReportTests(unittest.IsolatedAsyncioTestCase):
             result=await server.bps_check_key('sdgs')
         self.assertEqual(request.call_args.args[0],'listSdgsGoals')
         self.assertEqual(result['verification_scope'],'single_endpoint')
+
+    async def test_audit_missing_account_key_keeps_portal_result_without_crash(self):
+        item={'identifier':'e8c8605b-5ce1-4637-be23-9108837e89c9','title':'Inflasi Aceh','landingPage':URL}
+        sda=server._analisis_csv('tahun,nilai,satuan\n2025,2,Persen\n',URL,20)
+        with patch.object(server,'muat_katalog',AsyncMock(return_value=[item])),patch.object(server,'_unduh_csv',AsyncMock(return_value=sda)),patch.object(server,'_bps_api_key',side_effect=ValueError('Simpan API key terlebih dahulu.')):
+            result=await server.bandingkan_data('inflasi')
+        self.assertIn('api_key_tidak_ada',result)
+        self.assertIn('2025',result)
+        self.assertIn('Simpan API key BPS',result)
