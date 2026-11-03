@@ -123,7 +123,7 @@ Database lama dimigrasikan otomatis: email ditandai belum terverifikasi dan sesi
 
 ## Cloudflare Worker
 
-Gateway Cloudflare dikelola dalam repositori mandiri `MCP_SatuDataAceh_Worker`. Proyek ini menyediakan layanan Python untuk akun, vault, dan OAuth. Lihat [struktur dan cara sinkronisasi Worker](docs/pemisahan-worker.md).
+Gateway Cloudflare dikelola di [repositori Worker mandiri](https://github.com/abdrhmn09/MCP_SatuDataAceh_Worker). Proyek ini menyediakan layanan Python untuk akun, vault, dan OAuth. Lihat [struktur dan cara sinkronisasi Worker](docs/pemisahan-worker.md).
 
 ## Penyimpanan, backup, dan rotasi
 

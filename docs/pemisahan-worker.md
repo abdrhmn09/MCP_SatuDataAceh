@@ -2,6 +2,8 @@
 
 Gateway Cloudflare berada di repositori lokal `MCP_SatuDataAceh_Worker/` dengan Git, lockfile, CI dan konfigurasi Wrangler sendiri. Checkout tersebut bisa dipindahkan sebagai satu direktori. Jalankan semua perintah Node dari root Worker.
 
+Repositori GitHub privat tersedia untuk pengguna yang memiliki akses. [MCP_SatuDataAceh_Worker](https://github.com/abdrhmn09/MCP_SatuDataAceh_Worker)
+
 ```bash
 npm ci
 npm run typecheck
