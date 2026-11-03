@@ -41,6 +41,7 @@ class SearchResult(BaseModel):
 
 class SearchOutput(BaseModel):
     results: list[SearchResult]
+    message: str | None = None
 
 
 class FetchOutput(BaseModel):
@@ -49,6 +50,7 @@ class FetchOutput(BaseModel):
     text: str
     url: str
     metadata: dict[str, object] | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -63,6 +65,7 @@ class CsvReadResult:
     tahun_max: str = ""
     kolom_indikator: str = ""
     satuan: str = ""
+    indikator_bps: str = ""
 
 
 def _env_int(name: str, default: int) -> int:
@@ -283,6 +286,7 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
             return {
                 "domain": BPS_DOMAIN,
                 "variable": str(env_mapping[identifier]),
+                "defaultTh": "124",
                 "reference_url": _halaman_dataset(item),
             }
     except (TypeError, ValueError):
@@ -294,6 +298,8 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
         return {
             "domain": BPS_DOMAIN,
             "variable": str(entry["var"]),
+            "label": str(entry.get("label", "")),
+            "defaultTh": str(entry.get("defaultTh", "124")),
             "reference_url": _halaman_dataset(item),
         }
 
@@ -331,7 +337,12 @@ async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[
     source = _bps_source(item)
     if not source or not BPS_API_KEY:
         return None
-    for th in ["124", "123", "122"]:
+    kandidat_th = [source.get("defaultTh"), "124", "123", "122"]
+    sudah_dicoba: set[str] = set()
+    for th in kandidat_th:
+        if not th or th in sudah_dicoba:
+            continue
+        sudah_dicoba.add(th)
         url = _bps_url(source, th=th)
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
@@ -342,7 +353,14 @@ async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[
             if not teks_csv:
                 continue
             return _analisis_csv(teks_csv, url, 50), source
-        except (httpx.HTTPError, ValueError, TypeError) as error:
+        except (
+            httpx.HTTPError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            IndexError,
+        ) as error:
             logger.warning("Sumber BPS th=%s gagal: %s", th, type(error).__name__)
     return None
 
@@ -357,10 +375,12 @@ async def _ambil_langsung_dari_bps(
     """
     if not BPS_API_KEY:
         return None
-    th_candidates = [default_th, "124", "123"] if default_th else ["124", "123", "122"]
+    th_candidates = [default_th, "124", "123", "122"] if default_th else ["124", "123", "122"]
+    sudah_dicoba: set[str] = set()
     for th in th_candidates:
-        if not th:
+        if not th or th in sudah_dicoba:
             continue
+        sudah_dicoba.add(th)
         url = (
             f"https://webapi.bps.go.id/v1/api/list/model/data/"
             f"domain/{quote(domain, safe='')}/"
@@ -377,7 +397,14 @@ async def _ambil_langsung_dari_bps(
             if not teks_csv:
                 continue
             return _analisis_csv(teks_csv, url, 50), url
-        except (httpx.HTTPError, ValueError, TypeError) as error:
+        except (
+            httpx.HTTPError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            IndexError,
+        ) as error:
             logger.warning("Pengambilan langsung BPS var=%s th=%s gagal: %s", var_id, th, type(error).__name__)
     return None
 
@@ -458,8 +485,18 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
         "bps": ["bps", "badan pusat statistik", "susenas"],
         "pendidikan": ["pendidikan", "sekolah", "guru", "murid", "siswa", "lama sekolah"],
         "ipm": ["ipm", "indeks pembangunan manusia", "pembangunan manusia"],
-        "pengangguran": ["pengangguran", "tpt", "angkatan kerja"],
+        "pengangguran": ["pengangguran", "tpt", "tingkat pengangguran terbuka"],
+        "tpt": ["tpt", "tingkat pengangguran terbuka"],
         "kesehatan": ["kesehatan", "stunting", "gizi", "puskesmas", "rumah sakit"],
+        "ihk": ["ihk", "indeks harga konsumen", "inflasi"],
+        "inflasi": ["inflasi", "ihk", "indeks harga konsumen"],
+        "rls": ["rls", "rata-rata lama sekolah", "rata rata lama sekolah"],
+        "hls": ["hls", "harapan lama sekolah"],
+        "uhh": ["uhh", "umur harapan hidup", "angka harapan hidup"],
+        "pdrb": ["pdrb", "produk domestik regional bruto", "pertumbuhan ekonomi"],
+        "padi": ["padi"],
+        "sayur": ["sayur", "sayuran"],
+        "stunting": ["stunting", "prevalensi stunting"],
     }
 
     terms = {query_clean}
@@ -478,53 +515,173 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
         publisher = item.get("publisher", {})
         nama_penerbit = str(publisher.get("name", "")).lower() if isinstance(publisher, dict) else ""
 
-        score = 0
+        # Skor kecocokan query HARUS dihitung lebih dulu. Boost kurasi/wilayah
+        # hanya boleh menjadi penentu urutan setelah dataset benar-benar cocok.
+        match_score = 0
+        if query_clean in title:
+            match_score += 40
+        for term in terms:
+            if term in title:
+                match_score += 12
+            if any(term in k for k in keywords):
+                match_score += 6
+            if term in desc:
+                match_score += 2
+            if term in nama_penerbit:
+                match_score += 2
 
-        # Prioritas dataset strategis yang terkurasi
-        if identifier in BPS_INDICATOR_MAP:
-            score += 30
+        if match_score == 0:
+            continue
+
+        score = match_score
+
+        # Prioritas dataset strategis yang terkurasi (hanya untuk hasil yang cocok)
+        entri_kurasi = BPS_INDICATOR_MAP.get(identifier)
+        if entri_kurasi:
+            score += 10
+            kategori_kurasi = str(entri_kurasi.get("category", "")).lower()
+            if kategori_kurasi and kategori_kurasi in query_clean:
+                score += 40
 
         # Prioritas produsen data statistik utama
         if any(prod in nama_penerbit for prod in ["bps", "badan pusat statistik", "bappeda"]):
-            score += 15
-
-        # Pencocokan judul (exact match phrase bernilai tertinggi)
-        if query_clean in title:
-            score += 40
-        for term in terms:
-            if term in title:
-                score += 12
+            score += 5
 
         # Relevansi spasial wilayah Aceh (tingkatkan dataset lokal Aceh, turunkan agregat nasional)
         if "aceh" in title:
-            score += 15
+            score += 8
         if "kabupaten" in title or "kota" in title:
-            score += 10
+            score += 4
         if ("nasional" in title or "indonesia" in title) and ("nasional" not in query_clean and "indonesia" not in query_clean):
-            score -= 35
+            score -= 20
+
+        # Jangan biarkan dataset kemiskinan mendominasi query penduduk biasa.
+        if "miskin" in title and "miskin" not in query_clean and "kemiskinan" not in query_clean:
+            score -= 25
+        # Query "penduduk" sebaiknya mengarah ke seri jumlah penduduk, bukan
+        # ke dataset ketenagakerjaan yang kebetulan memuat kata "penduduk".
+        if (
+            "jumlah penduduk" in title
+            and "penduduk" in query_clean
+            and "miskin" not in query_clean
+            and "kemiskinan" not in query_clean
+            and not any(
+                kata in title
+                for kata in [
+                    "berumur",
+                    "bekerja",
+                    "angkatan kerja",
+                    "pekerjaan",
+                    "status kawin",
+                    "agama",
+                    "golongan darah",
+                    "disabilitas",
+                    "jenjang pendidikan",
+                ]
+            )
+        ):
+            score += 35
 
         # Penalti untuk dokumen non-indikator statistik (kegiatan internal, sop, tata kelola belanja)
         for noise in ["paud", "sop", "aktivitas", "rutin", "penyelenggaraan", "tata kelola", "belanja", "barang jasa", "pengadaan"]:
             if noise in title and noise not in query_clean:
-                score -= 40
+                score -= 30
 
-        # Pencocokan kata kunci dan deskripsi
-        for term in terms:
-            if any(term in k for k in keywords):
-                score += 6
-            if term in desc:
-                score += 2
-            if term in nama_penerbit:
-                score += 2
-
-        if score > 0:
-            scored.append((score, item))
+        scored.append((score, item))
 
     scored.sort(key=lambda entry: entry[0], reverse=True)
     return [item for _, item in scored[:5]]
 
 
-def _cek_kesepadanan_indikator(judul_sda: str, label_bps: str, query: str) -> tuple[bool, str]:
+_UNIT_FAMILIES: dict[str, tuple[str, ...]] = {
+    "persen": ("persen", "percent", "%"),
+    "rupiah": ("rupiah", "idr", "rp"),
+    "massa": ("ton", "kuintal", "kwintal", "kilogram", "kg", "gram"),
+    "jumlah": ("jiwa", "orang", "unit", "rumah tangga", "hektare", "hektar"),
+    "tahun": ("tahun",),
+    "indeks": ("poin", "indeks", "index"),
+}
+
+_INDICATOR_FAMILIES: dict[str, tuple[str, ...]] = {
+    "kemiskinan": ("miskin", "kemiskinan", "garis kemiskinan"),
+    "ipm": ("ipm", "indeks pembangunan manusia"),
+    "rls": ("rata-rata lama sekolah", "rata rata lama sekolah", "rls"),
+    "hls": ("harapan lama sekolah", "hls"),
+    "uhh": ("umur harapan hidup", "uhh", "angka harapan hidup"),
+    "pengangguran": ("pengangguran", "tpt", "kesempatan kerja"),
+    "pdrb": ("pdrb", "produk domestik regional bruto", "pertumbuhan ekonomi", "laju pertumbuhan"),
+    "inflasi": ("inflasi", "ihk", "indeks harga konsumen"),
+    "gini": ("gini", "ketimpangan"),
+    "padi": ("padi",),
+    "perikanan": ("perikanan", "ikan", "tangkap", "budidaya"),
+    "pendidikan": ("guru", "murid", "siswa"),
+    "stunting": ("stunting",),
+    "kesehatan": ("kesehatan", "fasyankes", "puskesmas", "tenaga kesehatan"),
+    "penduduk": ("penduduk",),
+    "sayur": ("sayur",),
+}
+
+
+def _keluarga_satuan(nilai: str) -> str:
+    teks = (nilai or "").lower().strip()
+    if not teks or teks in {"-", "tidak ada satuan", "none"}:
+        return ""
+    for keluarga, kata_kunci in _UNIT_FAMILIES.items():
+        if any(kata in teks for kata in kata_kunci):
+            return keluarga
+    return ""
+
+
+def _skala_satuan(nilai: str) -> str:
+    teks = (nilai or "").lower()
+    for skala in ("triliun", "miliar", "juta", "ribu"):
+        if skala in teks:
+            return skala
+    return ""
+
+
+def _satuan_massa(nilai: str) -> str:
+    teks = (nilai or "").lower()
+    if "ton" in teks:
+        return "ton"
+    if "kuintal" in teks or "kwintal" in teks:
+        return "kuintal"
+    if "kilogram" in teks or "kg" in teks:
+        return "kilogram"
+    if "gram" in teks:
+        return "gram"
+    return ""
+
+
+def _keluarga_indikator(nilai: str) -> set[str]:
+    teks = (nilai or "").lower()
+    return {
+        keluarga
+        for keluarga, kata_kunci in _INDICATOR_FAMILIES.items()
+        if any(kata in teks for kata in kata_kunci)
+    }
+
+
+def _jenis_ukuran(nilai: str) -> str:
+    teks = (nilai or "").lower()
+    if "kontribusi" in teks or "pangsa" in teks or "peranan" in teks or "share" in teks:
+        return "kontribusi"
+    if "laju pertumbuhan" in teks or "pertumbuhan" in teks or "growth" in teks:
+        return "pertumbuhan"
+    if "indeks" in teks or "ihk" in teks:
+        return "indeks"
+    if "persentase" in teks or "tingkat" in teks:
+        return "persentase"
+    return ""
+
+
+def _cek_kesepadanan_indikator(
+    judul_sda: str,
+    label_bps: str,
+    query: str,
+    satuan_sda: str = "",
+    satuan_bps: str = "",
+) -> tuple[bool, str]:
     """Memeriksa apakah dataset Satu Data Aceh dan data BPS sepadan secara metodologis dan spasial.
 
     Mengembalikan (is_comparable, alasan_jika_tidak_sepadan).
@@ -561,6 +718,57 @@ def _cek_kesepadanan_indikator(judul_sda: str, label_bps: str, query: str) -> tu
     if "paud" in judul_lower and "paud" not in bps_lower:
         return False, "Konsep indikator tidak sepadan: Satu Data Aceh adalah data kegiatan/PAUD, bukan indikator statistik makro BPS."
 
+    # 5. Cek satuan. Perbandingan angka hanya bermakna bila keluarga satuannya sama.
+    keluarga_sda = _keluarga_satuan(satuan_sda)
+    keluarga_bps = _keluarga_satuan(satuan_bps)
+    if keluarga_sda and keluarga_bps and keluarga_sda != keluarga_bps:
+        return (
+            False,
+            f"Satuan tidak sepadan: Satu Data Aceh memakai satuan '{satuan_sda}', "
+            f"sedangkan BPS memakai '{satuan_bps}'.",
+        )
+    if keluarga_sda == keluarga_bps == "rupiah":
+        skala_sda = _skala_satuan(satuan_sda)
+        skala_bps = _skala_satuan(satuan_bps)
+        if skala_sda != skala_bps and (skala_sda or skala_bps):
+            return (
+                False,
+                f"Skala satuan tidak sepadan: Satu Data Aceh memakai '{satuan_sda}', "
+                f"sedangkan BPS memakai '{satuan_bps}'.",
+            )
+    if keluarga_sda == keluarga_bps == "massa":
+        massa_sda = _satuan_massa(satuan_sda)
+        massa_bps = _satuan_massa(satuan_bps)
+        if massa_sda and massa_bps and massa_sda != massa_bps:
+            return (
+                False,
+                f"Satuan massa tidak sepadan: Satu Data Aceh memakai '{satuan_sda}', "
+                f"sedangkan BPS memakai '{satuan_bps}'.",
+            )
+
+    # 6. Cek keluarga indikator. Jika kedua judul jelas-jelas membahas indikator
+    #    yang berbeda (mis. stunting vs harapan lama sekolah), jangan paksakan
+    #    perbandingan hanya karena query pengguna mengandung satu kata kunci.
+    keluarga_judul = _keluarga_indikator(judul_sda)
+    keluarga_bps_set = _keluarga_indikator(label_bps)
+    if keluarga_judul and keluarga_bps_set and keluarga_judul.isdisjoint(keluarga_bps_set):
+        return (
+            False,
+            "Indikator tidak sepadan: "
+            f"Satu Data Aceh membahas {', '.join(sorted(keluarga_judul))}, "
+            f"sedangkan BPS membahas {', '.join(sorted(keluarga_bps_set))}.",
+        )
+
+    # 7. Cek jenis ukuran (kontribusi/pangsa vs laju pertumbuhan vs indeks).
+    ukuran_sda = _jenis_ukuran(judul_sda)
+    ukuran_bps = _jenis_ukuran(label_bps)
+    if ukuran_sda and ukuran_bps and ukuran_sda != ukuran_bps:
+        return (
+            False,
+            f"Jenis ukuran tidak sepadan: Satu Data Aceh mengukur '{ukuran_sda}', "
+            f"sedangkan BPS mengukur '{ukuran_bps}'.",
+        )
+
     return True, "Kedua indikator sepadan untuk dibandingkan."
 
 
@@ -591,9 +799,24 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
         )
     tahun_min, tahun_max = _ekstrak_tahun_dari_df(df)
     kolom_ind, satuan = _deteksi_kolom_indikator(df)
+    indikator_bps = ""
+    if "indikator" in df.columns and "kode_wilayah" in df.columns:
+        nilai_indikator = df["indikator"].dropna().unique()
+        if len(nilai_indikator) > 0:
+            indikator_bps = str(nilai_indikator[0])
     preview = df.head(baris_maksimal).to_markdown(index=False)
     return CsvReadResult(
-        "valid", preview, row_count, column_count, url, "", tahun_min, tahun_max, kolom_ind, satuan
+        "valid",
+        preview,
+        row_count,
+        column_count,
+        url,
+        "",
+        tahun_min,
+        tahun_max,
+        kolom_ind,
+        satuan,
+        indikator_bps,
     )
 
 
@@ -624,7 +847,10 @@ async def health(_: Request) -> JSONResponse:
 async def search(query: str) -> SearchOutput:
     """Mencari dataset Aceh dan mengembalikan hasil dengan URL yang dapat dikutip."""
     if not await _rate_limiter.allow():
-        raise ValueError("Batas permintaan tercapai. Coba lagi beberapa saat.")
+        return SearchOutput(
+            results=[],
+            message="Batas permintaan tercapai. Coba lagi beberapa saat.",
+        )
     query = query.strip() if isinstance(query, str) else ""
     if not query:
         return SearchOutput(results=[])
@@ -646,24 +872,49 @@ async def search(query: str) -> SearchOutput:
 async def fetch(id: str) -> FetchOutput:
     """Mengambil isi ringkas CSV dataset berdasarkan identifier hasil search."""
     if not await _rate_limiter.allow():
-        raise ValueError("Batas permintaan tercapai. Coba lagi beberapa saat.")
-    
+        return FetchOutput(
+            id=str(id or "").strip(),
+            title="",
+            text="Batas permintaan tercapai. Coba lagi beberapa saat.",
+            url="",
+            error="rate_limited",
+        )
+
     clean_id = str(id).strip() if id else ""
     if not clean_id:
-        raise ValueError("Parameter identifier dataset tidak boleh kosong.")
+        return FetchOutput(
+            id="",
+            title="",
+            text="Parameter identifier dataset tidak boleh kosong.",
+            url="",
+            error="invalid_argument",
+        )
 
     katalog = await muat_katalog()
     item = next((entry for entry in katalog if str(entry.get("identifier", "")).strip() == clean_id), None)
     if item is None:
-        raise ValueError(
-            f"Dataset dengan ID '{clean_id}' tidak ditemukan di katalog Satu Data Aceh. "
-            f"Gunakan tool 'search' atau 'cari_katalog_data' untuk menemukan identifier yang valid."
+        return FetchOutput(
+            id=clean_id,
+            title="",
+            text=(
+                f"Dataset dengan ID '{clean_id}' tidak ditemukan di katalog Satu Data Aceh. "
+                f"Gunakan tool 'search' atau 'cari_katalog_data' untuk menemukan identifier yang valid."
+            ),
+            url="",
+            error="not_found",
         )
 
     csv_url = _url_csv_item(item)
     if not csv_url:
-        raise ValueError(
-            f"Dataset '{clean_id}' ({item.get('title', 'Dataset')}) tidak memiliki tautan distribusi CSV yang valid."
+        return FetchOutput(
+            id=clean_id,
+            title=str(item.get("title", "Dataset Aceh")),
+            text=(
+                f"Dataset '{clean_id}' ({item.get('title', 'Dataset')}) tidak memiliki "
+                f"tautan distribusi CSV yang valid."
+            ),
+            url=_halaman_dataset(item),
+            error="no_csv",
         )
 
     try:
@@ -715,6 +966,7 @@ async def fetch(id: str) -> FetchOutput:
             "observation_end": result.tahun_max,
             "kolom_indikator": result.kolom_indikator,
             "satuan": result.satuan,
+            "indikator_bps": result.indikator_bps,
             "status": result.status,
             "row_count": result.row_count,
             "column_count": result.column_count,
@@ -832,7 +1084,7 @@ async def bandingkan_data(indikator: str) -> str:
 
     Args:
         indikator: Nama indikator statistik (contoh: "kemiskinan", "IPM", "pengangguran",
-                   "inflasi", "PDRB", "gini", "stunting", "padi", "perikanan").
+                   "inflasi", "PDRB", "gini", "padi", "sayur").
     """
     if not await _rate_limiter.allow():
         return "Batas permintaan tercapai. Coba lagi beberapa saat."
@@ -846,6 +1098,20 @@ async def bandingkan_data(indikator: str) -> str:
 
     # ── Cari di Satu Data Aceh ──────────────────────────────────────────────
     hasil_sda = _cocokkan_dataset(katalog, indikator)
+    # Prioritaskan dataset yang sudah diverifikasi punya pasangan BPS.
+    hasil_sda.sort(key=lambda item: 0 if _bps_source(item) else 1)
+
+    # Jika tidak ada satu pun kandidat teratas yang punya pasangan BPS, cari
+    # dataset terpetakan yang masih cocok dengan query. Ini mencegah tool
+    # memilih "Garis Kemiskinan" hanya karena judulnya memuat kata
+    # "kemiskinan", lalu membandingkannya dengan persentase penduduk miskin.
+    if not any(_bps_source(item) for item in hasil_sda):
+        for item in katalog:
+            if str(item.get("identifier", "")) not in BPS_INDICATOR_MAP:
+                continue
+            if _cocokkan_dataset([item], indikator):
+                hasil_sda.insert(0, item)
+                break
     sda_status = "tidak_ditemukan"
     sda_periode = "-"
     sda_baris = 0
@@ -917,19 +1183,27 @@ async def bandingkan_data(indikator: str) -> str:
         if bps_source_katalog:
             var_info = {
                 "var": bps_source_katalog["variable"],
-                "label": sda_judul,
+                "label": bps_source_katalog.get("label", ""),
+                "defaultTh": bps_source_katalog.get("defaultTh", "124"),
             }
     if not var_info:
         var_info = cari_var_bps_dari_kata_kunci(indikator)
+
+    # Label BPS harus berasal dari BPS, bukan dari judul Satu Data Aceh.
+    label_bps = (str(var_info.get("label", "")) if var_info else "") or "-"
 
     if var_info:
         bps_url_tampil = (
             f"https://webapi.bps.go.id/v1/api/list/model/data/"
             f"domain/{BPS_DOMAIN}/var/{var_info['var']}/key/***"
         )
-        bps_result_tuple = await _ambil_langsung_dari_bps(var_info["var"], BPS_DOMAIN)
+        bps_result_tuple = await _ambil_langsung_dari_bps(
+            var_info["var"], BPS_DOMAIN, var_info.get("defaultTh")
+        )
         if bps_result_tuple:
             result_bps, bps_url_actual = bps_result_tuple
+            if result_bps.indikator_bps:
+                label_bps = result_bps.indikator_bps
             bps_status = result_bps.status
             bps_baris = result_bps.row_count
             if result_bps.status == "valid":
@@ -951,21 +1225,26 @@ async def bandingkan_data(indikator: str) -> str:
         bps_teks = (
             f"Tidak ditemukan variabel BPS yang dipetakan untuk indikator: '{indikator}'.\n"
             f"Daftar indikator yang didukung: kemiskinan, IPM, pengangguran, inflasi, PDRB, "
-            f"gini, stunting, padi, perikanan, dan lainnya."
+            f"PDRB per kapita, gini, padi, sayur, dan lainnya."
         )
 
     bagian.append(
         f"## Sumber 2: BPS Web API (Domain {BPS_DOMAIN} – Provinsi Aceh)\n"
         f"- **Status Data**: `{bps_status}` | **Baris Observasi**: {bps_baris} | **Rentang Tahun Observasi**: {bps_periode}\n"
-        f"- **Indikator BPS**: {var_info['label'] if var_info else '-'} (var: {var_info['var'] if var_info else '-'})\n"
+        f"- **Indikator BPS**: {label_bps} (var: {var_info['var'] if var_info else '-'})\n"
         f"- **Endpoint**: `{bps_url_tampil}`\n\n"
         f"{bps_teks if bps_teks else '_Data tidak tersedia._'}"
     )
 
     # ── Kesimpulan & Validasi Kesepadanan ─────────────────────────────────────
     rekomendasi = ""
-    label_bps = var_info["label"] if var_info else ""
-    is_sepadan, alasan_kesepadanan = _cek_kesepadanan_indikator(sda_judul, label_bps, indikator)
+    is_sepadan, alasan_kesepadanan = _cek_kesepadanan_indikator(
+        sda_judul,
+        label_bps,
+        indikator,
+        result_sda.satuan if result_sda else "",
+        result_bps.satuan if result_bps else "",
+    )
 
     if not is_sepadan and sda_status == "valid" and bps_status == "valid":
         rekomendasi = (

@@ -33,20 +33,29 @@ Server menyediakan 5 tool terstandar:
 | **`fetch`** | Mengambil preview tabel numerik, mendeteksi kolom indikator riil, satuan, dan rentang tahun observasi | `id`: string (UUID dataset) |
 | **`cari_katalog_data`** | Pencarian katalog naratif lengkap dengan produsen data dan tautan unduh CSV | `kata_kunci`: string |
 | **`baca_isi_csv`** | Mengunduh dan membaca baris numerik dari URL CSV publik ke format tabel Markdown | `url`: string (HTTPS), `baris_maksimal`: int (1–50) |
-| **`bandingkan_data`** | **(Unggulan)** Komparasi otomatis antara Satu Data Aceh dan BPS Web API dengan validasi kesepadanan metodologis | `indikator`: string (misal: "IPM", "kemiskinan", "penduduk") |
+| **`bandingkan_data`** | **(Unggulan)** Komparasi otomatis antara Satu Data Aceh dan BPS Web API dengan validasi kesepadanan metodologis | `indikator`: string (misal: "IPM", "kemiskinan", "inflasi", "padi") |
 
 ---
 
 ## 💻 Panduan Integrasi Klien AI
 
 ### 1. Claude Desktop (Remote SSE)
-Tambahkan ke file konfigurasi Claude Desktop (`claude_desktop_config.json`):
+Claude Desktop **tidak membaca field `url`** dari `claude_desktop_config.json`. Gunakan salah satu cara berikut:
+
+**A. Melalui menu Connectors (paling mudah)**
+1. Buka **Settings** > **Connectors** > **Add custom connector**.
+2. Masukkan URL: `https://www.mcpsatudataaceh.web.id/sse`
+3. Simpan, lalu mulai percakapan baru.
+
+**B. Melalui `mcp-remote` (jika Connectors belum tersedia)**
+Tambahkan ke `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "satu-data-aceh": {
-      "url": "https://www.mcpsatudataaceh.web.id/sse"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://www.mcpsatudataaceh.web.id/sse"]
     }
   }
 }
@@ -87,31 +96,39 @@ Tambahkan pada file `.cursor/mcp.json` di project Anda atau melalui menu **Setti
 ---
 
 ### 4. VS Code / GitHub Copilot
-Tambahkan pada konfigurasi ekstensi MCP di VS Code (`settings.json`):
+Buat file `.vscode/mcp.json` di root project (bukan `settings.json`):
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "satu-data-aceh": {
-        "url": "https://www.mcpsatudataaceh.web.id/sse",
-        "type": "sse"
-      }
+  "servers": {
+    "satu-data-aceh": {
+      "type": "sse",
+      "url": "https://www.mcpsatudataaceh.web.id/sse"
     }
   }
 }
 ```
+
+Setelah itu jalankan perintah **MCP: List Servers** dari Command Palette, lalu pilih `satu-data-aceh` > **Start Server**.
 
 ---
 
 ### 5. Mode Lokal (STDIO via Python)
 Jika Anda ingin menjalankan server langsung di mesin lokal tanpa jaringan remote:
 
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Lalu gunakan konfigurasi berikut:
+
 ```json
 {
   "mcpServers": {
     "satu-data-aceh-lokal": {
-      "command": "python",
+      "command": "python3",
       "args": ["-m", "src.server"],
       "cwd": "/path/ke/MCP_SatuDataAceh",
       "env": {
@@ -143,9 +160,12 @@ Setelah MCP terhubung, Anda dapat mengajukan pertanyaan seperti:
 2. **Ekstraksi Tahun Observasi Aktual**:
    - Mengekstrak tahun observasi dari kolom tabel numerik, bukan dari timestamp metadata publikasi portal (mencegah salah deteksi tahun rilis).
 3. **Validasi Kesepadanan Indikator (`Smart Comparability`)**:
-   - Mencegah perbandingan yang keliru antara data agregat total provinsi dengan data disagregasi gender atau data nasional.
+   - Menolak perbandingan yang berbeda satuan (mis. Rupiah vs Persen), berbeda skala (Juta vs Ribu Rupiah), berbeda indikator (mis. stunting vs harapan lama sekolah), atau berbeda jenis ukuran (kontribusi/pangsa vs laju pertumbuhan).
+   - Tetap memeriksa perbedaan cakupan wilayah (nasional vs Aceh) dan disagregasi gender.
 4. **Deteksi Kolom Indikator & Satuan**:
-   - Mengidentifikasi nama variabel numerik substantif dan satuan data (`Poin`, `Persen`, `Rupiah/Kapita/Bulan`, `Jiwa`).
+   - Mengidentifikasi nama variabel numerik substantif dan satuan data (`Poin`, `Persen`, `Rupiah/Kapita/Bulan`, `Jiwa`), termasuk satuan resmi dari respons BPS.
+5. **Transparansi Keterbatasan BPS**:
+   - Jika indikator tidak tersedia di BPS Domain 1100 (mis. stunting, produksi perikanan tangkap, jumlah guru), tool tidak memaksakan perbandingan dan akan menampilkan status `tidak_ditemukan`.
 
 ---
 
@@ -162,10 +182,10 @@ Output yang diharapkan:
 
 ### Menjalankan Unit Test Lokal
 ```bash
-# Menggunakan venv lokal
-pytest tests
+# Dari root repositori
+python3 -m pytest tests
 ```
-Semua test suite (58 tests) harus berstatus **passed**.
+Seluruh test suite harus berstatus **passed** (72 tests + 4.018 subtest pada versi ini).
 
 ---
 

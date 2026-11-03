@@ -22,6 +22,42 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.results[0].id, "dataset-1")
         self.assertEqual(result.results[0].url, katalog[0]["landingPage"])
 
+    async def test_search_tanpa_kecocokan_mengembalikan_kosong(self):
+        katalog = [
+            {
+                "identifier": "f2585d70-70d1-49f9-8c78-6750a46e1780",
+                "title": "Rata Rata Lama Sekolah Provinsi Aceh Menurut Kabupaten Kota",
+                "description": "",
+                "landingPage": "https://satudata.acehprov.go.id/datasets/rls",
+                "distribution": [],
+            }
+        ]
+        with patch("src.server.muat_katalog", new=AsyncMock(return_value=katalog)):
+            result = await search("zzzz")
+        self.assertEqual(result.results, [])
+
+    async def test_search_ihk_tidak_didahului_dataset_kurasi(self):
+        katalog = [
+            {
+                "identifier": "f2585d70-70d1-49f9-8c78-6750a46e1780",
+                "title": "Rata Rata Lama Sekolah Provinsi Aceh Menurut Kabupaten Kota",
+                "description": "",
+                "landingPage": "https://satudata.acehprov.go.id/datasets/rls",
+                "distribution": [],
+            },
+            {
+                "identifier": "dataset-ihk",
+                "title": "Indeks Harga Konsumen (IHK) Provinsi Aceh",
+                "description": "Indeks harga konsumen",
+                "landingPage": "https://satudata.acehprov.go.id/datasets/ihk",
+                "distribution": [],
+            },
+        ]
+        with patch("src.server.muat_katalog", new=AsyncMock(return_value=katalog)):
+            result = await search("IHK")
+        self.assertTrue(result.results)
+        self.assertEqual(result.results[0].id, "dataset-ihk")
+
     async def test_fetch_menghasilkan_output_terstruktur(self):
         katalog = [
             {
@@ -45,14 +81,15 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fetch_identifier_tidak_ditemukan(self):
         with patch("src.server.muat_katalog", new=AsyncMock(return_value=[])):
-            with self.assertRaises(ValueError):
-                await fetch("missing")
+            result = await fetch("missing")
+        self.assertEqual(result.error, "not_found")
+        self.assertIn("tidak ditemukan", result.text)
 
     async def test_fetch_rate_limit_terlampaui(self):
         with patch("src.server._rate_limiter.allow", new=AsyncMock(return_value=False)):
-            with self.assertRaises(ValueError) as ctx:
-                await fetch("dataset-1")
-            self.assertIn("Batas permintaan tercapai", str(ctx.exception))
+            result = await fetch("dataset-1")
+        self.assertEqual(result.error, "rate_limited")
+        self.assertIn("Batas permintaan tercapai", result.text)
 
     async def test_fetch_gagal_unduh_csv_tidak_crash(self):
         import httpx
@@ -108,9 +145,9 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.text, "| kab | miskin |")
 
     async def test_fetch_identifier_kosong_ditolak(self):
-        with self.assertRaises(ValueError) as ctx:
-            await fetch("   ")
-        self.assertIn("tidak boleh kosong", str(ctx.exception))
+        result = await fetch("   ")
+        self.assertEqual(result.error, "invalid_argument")
+        self.assertIn("tidak boleh kosong", result.text)
 
     async def test_fetch_metadata_kolom_indikator(self):
         katalog = [

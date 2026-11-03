@@ -26,122 +26,92 @@ logger = logging.getLogger(__name__)
 # Peta ini digunakan oleh _bps_source() sebagai FALLBACK ketika data Satu Data
 # Aceh tidak tersedia, kosong, atau hanya berisi header.
 # ---------------------------------------------------------------------------
+# PENTING: peta ini hanya boleh berisi pasangan yang sudah diverifikasi terhadap
+# katalog data.json dan respons BPS. Pemetaan yang tidak yakin sengaja dihapus
+# agar tool tidak membandingkan indikator yang berbeda.
+#
+# Entri berikut pernah ada tetapi dihapus karena tidak lagi cocok dengan
+# dataset portal (identifier dipakai ulang oleh dataset lain):
+#   afefeee7... (bukan Jumlah Penduduk Miskin)
+#   2414165c... (IPM menurut jenis kelamin nasional, bukan RLS)
+#   6cab69b8... (Jumlah Guru SMP, BPS tidak menyediakan data SMP)
+#   bfe0cc05... (Kontribusi Perikanan, bukan Pertumbuhan PDRB)
+#   3f92d70a... (Produksi Perikanan Tangkap, BPS var 253 tidak punya data)
+#   1d4d7e1a... (Prevalensi Stunting, BPS domain 1100 tidak punya var stunting)
+#   81dc3ba5... (Persentase Fasyankes, bukan Garis Kemiskinan)
 BPS_INDICATOR_MAP: dict[str, dict[str, str]] = {
     # ── Kemiskinan ──────────────────────────────────────────────────────────
     "0116d97b-1b4a-4c6a-a243-33833660fb85": {
         "var": "42",
-        "label": "Persentase Penduduk Miskin Aceh Menurut Kabupaten/Kota",
+        "label": "Persentase Penduduk Miskin (P0) menurut Kabupaten/Kota",
         "category": "kemiskinan",
         "defaultTh": "124",
     },
-    "afefeee7-2dbb-4ab8-aa2c-71610fc5fdb6": {
-        "var": "41",
-        "label": "Jumlah Penduduk Miskin Menurut Kabupaten/Kota",
-        "category": "kemiskinan",
-        "defaultTh": "124",
-    },
+    # ── IPM & Pendidikan ────────────────────────────────────────────────────
     "5832d12b-52b2-44b2-b85c-0a3bd89782f3": {
         "var": "74",
-        "label": "Indeks Pembangunan Manusia (IPM) Menurut Kabupaten/Kota",
+        "label": "Indeks Pembangunan Manusia (IPM) menurut Kabupaten/Kota",
         "category": "ipm",
         "defaultTh": "124",
     },
     "78794e4b-2bbe-45ef-abd1-0a65c2e98702": {
-        "var": "245",
-        "label": "Rata-rata Lama Sekolah (RLS) Menurut Kabupaten/Kota",
-        "category": "pendidikan",
-        "defaultTh": "124",
-    },
-    "2414165c-27b1-41a1-8229-0a51a128636d": {
-        "var": "245",
-        "label": "Rata-rata Lama Sekolah (RLS)",
-        "category": "pendidikan",
+        "var": "74",
+        "label": "Indeks Pembangunan Manusia (IPM) menurut Kabupaten/Kota",
+        "category": "ipm",
         "defaultTh": "124",
     },
     "f2585d70-70d1-49f9-8c78-6750a46e1780": {
         "var": "245",
-        "label": "Rata-rata Lama Sekolah Provinsi Aceh Menurut Kabupaten/Kota",
-        "category": "pendidikan",
-        "defaultTh": "124",
-    },
-    "6cab69b8-d936-4f8a-b5a1-ea1fb45589e9": {
-        "var": "245",
-        "label": "Rata-rata Lama Sekolah (RLS) BPS Aceh",
+        "label": "Rata-rata Lama Sekolah menurut Kabupaten/Kota",
         "category": "pendidikan",
         "defaultTh": "124",
     },
     # ── Ketenagakerjaan ─────────────────────────────────────────────────────
     "97e549de-0a20-452a-9948-455abe2532a8": {
         "var": "206",
-        "label": "Tingkat Pengangguran Terbuka (TPT) Menurut Kabupaten/Kota",
+        "label": "Tingkat Pengangguran Terbuka (TPT) menurut Kabupaten/Kota",
         "category": "ketenagakerjaan",
         "defaultTh": "124",
     },
     # ── Ekonomi & PDRB ─────────────────────────────────────────────────────
     "22d3b2b0-8c0e-46cb-915d-7780fd4e1158": {
-        "var": "204",
-        "label": "Laju Pertumbuhan Ekonomi Aceh",
+        "var": "403",
+        "label": "Laju Pertumbuhan PDRB Tahunan Atas Dasar Harga Konstan (ADHK)",
         "category": "pdrb",
         "defaultTh": "124",
     },
     "95ceff6a-c0d9-4ef5-b6cb-86eee4764833": {
-        "var": "397",
-        "label": "PDRB Tahunan Atas Dasar Harga Berlaku Provinsi Aceh",
-        "category": "pdrb",
-        "defaultTh": "124",
-    },
-    "bfe0cc05-78ff-46f2-9329-c943863e5c50": {
-        "var": "204",
-        "label": "Pertumbuhan PDRB Provinsi Aceh",
+        "var": "434",
+        "label": "PDRB Per Kapita Tahunan Atas Dasar Harga Berlaku (ADHB)",
         "category": "pdrb",
         "defaultTh": "124",
     },
     # ── Harga & Inflasi ─────────────────────────────────────────────────────
     "e8c8605b-5ce1-4637-be23-9108837e89c9": {
         "var": "564",
-        "label": "Tingkat Inflasi Tahun ke Tahun Provinsi Aceh",
+        "label": "Inflasi Tahun ke Tahun (y-on-y)",
         "category": "inflasi",
         "defaultTh": "124",
     },
     # ── Ketimpangan ─────────────────────────────────────────────────────────
     "0c63d096-1671-4afd-94b5-39048d378e56": {
         "var": "60",
-        "label": "Rasio Gini Provinsi Aceh",
+        "label": "Gini Rasio menurut Klasifikasi Desa/Kota",
         "category": "ketimpangan",
         "defaultTh": "124",
     },
-    # ── Pertanian Tanaman Pangan ────────────────────────────────────────────
+    # ── Pertanian Tanaman Pangan & Hortikultura ─────────────────────────────
     "d8c8a7f0-d329-4872-8546-294fd6267c7b": {
         "var": "574",
-        "label": "Produksi Padi Menurut Kabupaten/Kota",
+        "label": "Luas Panen, Produktivitas, dan Produksi Padi menurut Kabupaten/Kota",
         "category": "pertanian",
         "defaultTh": "123",
     },
-    # ── Perikanan ───────────────────────────────────────────────────────────
-    "3f92d70a-8533-4f25-bc9f-332b7a4c8b84": {
-        "var": "204",
-        "label": "PDRB Sektor Pertanian, Kehutanan dan Perikanan Aceh",
-        "category": "perikanan",
-        "defaultTh": "124",
-    },
-    # ── Indikator Tambahan ──────────────────────────────────────────────────
-    "1d4d7e1a-9d53-45a4-a11e-dc24d6c8cf25": {
-        "var": "246",
-        "label": "Harapan Lama Sekolah (HLS) Menurut Kabupaten/Kota",
-        "category": "pendidikan",
-        "defaultTh": "124",
-    },
-    "81dc3ba5-e050-47fe-846b-298ca2977216": {
-        "var": "45",
-        "label": "Garis Kemiskinan Menurut Kabupaten/Kota",
-        "category": "kemiskinan",
-        "defaultTh": "124",
-    },
     "21cece89-360f-480d-a3e9-a841a79e752d": {
-        "var": "2",
-        "label": "Indeks Harga Konsumen (IHK) Provinsi Aceh",
-        "category": "inflasi",
-        "defaultTh": "124",
+        "var": "581",
+        "label": "Produksi Tanaman Sayuran menurut Kabupaten/Kota dan Jenis Tanaman",
+        "category": "pertanian",
+        "defaultTh": "123",
     },
 }
 
@@ -153,17 +123,13 @@ import re
 # ---------------------------------------------------------------------------
 BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
     # Pendidikan
-    "pendidikan": {"var": "245", "label": "Rata-rata Lama Sekolah (RLS)", "defaultTh": "124"},
-    "sekolah": {"var": "245", "label": "Rata-rata Lama Sekolah (RLS)", "defaultTh": "124"},
-    "guru": {"var": "245", "label": "Indikator Pendidikan / RLS", "defaultTh": "124"},
-    "murid": {"var": "245", "label": "Indikator Pendidikan / RLS", "defaultTh": "124"},
-    "siswa": {"var": "245", "label": "Indikator Pendidikan / RLS", "defaultTh": "124"},
+    "pendidikan": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
     "lama sekolah": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
     "rata-rata lama sekolah": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
-    "harapan lama sekolah": {"var": "246", "label": "Harapan Lama Sekolah", "defaultTh": "124"},
     "rls": {"var": "245", "label": "Rata-rata Lama Sekolah", "defaultTh": "124"},
+    "harapan lama sekolah": {"var": "246", "label": "Harapan Lama Sekolah", "defaultTh": "124"},
     "hls": {"var": "246", "label": "Harapan Lama Sekolah", "defaultTh": "124"},
-    "aps": {"var": "245", "label": "Angka Partisipasi Sekolah / RLS", "defaultTh": "124"},
+    "aps": {"var": "92", "label": "Angka Partisipasi Sekolah (APS)", "defaultTh": "124"},
 
     # Kemiskinan
     "kemiskinan": {"var": "42", "label": "Persentase Penduduk Miskin", "defaultTh": "124"},
@@ -186,12 +152,11 @@ BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
     # Ketenagakerjaan
     "pengangguran": {"var": "206", "label": "Tingkat Pengangguran Terbuka", "defaultTh": "124"},
     "tpt": {"var": "206", "label": "Tingkat Pengangguran Terbuka", "defaultTh": "124"},
-    "angkatan kerja": {"var": "206", "label": "Ketenagakerjaan / TPT", "defaultTh": "124"},
 
     # Ekonomi & PDRB
-    "pdrb": {"var": "204", "label": "Laju Pertumbuhan PDRB", "defaultTh": "124"},
-    "pertumbuhan ekonomi": {"var": "204", "label": "Laju Pertumbuhan Ekonomi", "defaultTh": "124"},
-    "laju pertumbuhan": {"var": "204", "label": "Laju Pertumbuhan Ekonomi", "defaultTh": "124"},
+    "pdrb": {"var": "403", "label": "Laju Pertumbuhan PDRB Tahunan (ADHK)", "defaultTh": "124"},
+    "pertumbuhan ekonomi": {"var": "403", "label": "Laju Pertumbuhan Ekonomi", "defaultTh": "124"},
+    "laju pertumbuhan": {"var": "403", "label": "Laju Pertumbuhan Ekonomi", "defaultTh": "124"},
 
     # Inflasi
     "inflasi": {"var": "564", "label": "Laju Inflasi Tahun ke Tahun", "defaultTh": "124"},
@@ -204,10 +169,8 @@ BPS_KEYWORD_TO_VAR: dict[str, dict[str, str]] = {
     # Pertanian
     "padi": {"var": "574", "label": "Produksi Padi", "defaultTh": "123"},
     "produksi padi": {"var": "574", "label": "Produksi Padi", "defaultTh": "123"},
-
-    # Perikanan
-    "perikanan": {"var": "204", "label": "PDRB Lapangan Usaha Perikanan", "defaultTh": "124"},
-    "ikan": {"var": "204", "label": "PDRB Lapangan Usaha Perikanan", "defaultTh": "124"},
+    "sayur": {"var": "581", "label": "Produksi Tanaman Sayuran", "defaultTh": "123"},
+    "sayuran": {"var": "581", "label": "Produksi Tanaman Sayuran", "defaultTh": "123"},
 }
 
 
@@ -253,11 +216,18 @@ def bps_payload_ke_dataframe(payload: dict[str, Any]) -> pd.DataFrame | None:
         return None
 
     datacontent: dict[str, float] = payload.get("datacontent", {})
-    vervar: list[dict[str, Any]] = payload.get("vervar", [])
-    tahun_list: list[dict[str, Any]] = payload.get("tahun", [])
-    var_list: list[dict[str, Any]] = payload.get("var", [{}])
-    turvar_list: list[dict[str, Any]] = payload.get("turvar", [{"val": "0", "label": ""}])
-    turtahun_list: list[dict[str, Any]] = payload.get("turtahun", [{"val": "0", "label": "Tahunan"}])
+    # BPS mengembalikan datacontent sebagai list kosong ketika data untuk
+    # tahun/periode tersebut belum tersedia. Perlakukan sebagai "tidak ada data"
+    # agar pemanggil bisa mencoba tahun lain, bukan crash.
+    if not isinstance(datacontent, dict):
+        return None
+    vervar: list[dict[str, Any]] = payload.get("vervar") or []
+    tahun_list: list[dict[str, Any]] = payload.get("tahun") or []
+    var_list: list[dict[str, Any]] = payload.get("var") or [{}]
+    turvar_list: list[dict[str, Any]] = payload.get("turvar") or [{"val": "0", "label": ""}]
+    turtahun_list: list[dict[str, Any]] = payload.get("turtahun") or [
+        {"val": "0", "label": "Tahunan"}
+    ]
 
     var_label = var_list[0].get("label", "Nilai") if var_list else "Nilai"
     unit = var_list[0].get("unit", "") if var_list else ""
@@ -274,11 +244,10 @@ def bps_payload_ke_dataframe(payload: dict[str, Any]) -> pd.DataFrame | None:
                 tv_val = str(tv.get("val", "0"))
                 tv_label = tv.get("label", "")
                 for tt in turtahun_list:
-                    # turtahun_val harus 2 digit (zero-padded) sesuai format datacontent BPS
-                    tt_raw = str(tt.get("val", "0"))
-                    tt_val = tt_raw.zfill(2)
+                    # Kunci BPS memakai nilai turtahun apa adanya (biasanya "0").
+                    tt_val = str(tt.get("val", "0"))
                     tt_label = tt.get("label", "Tahunan")
-                    # Kunci BPS: vervar + var + turvar + tahun + turtahun(2 digit)
+                    # Kunci BPS: vervar + var + turvar + tahun + turtahun
                     key = f"{vv_val}{var_val}{tv_val}{th_val}{tt_val}"
                     if key in datacontent:
                         row: dict[str, Any] = {
@@ -316,6 +285,8 @@ def bps_payload_ke_dataframe(payload: dict[str, Any]) -> pd.DataFrame | None:
                 "indikator": var_label,
                 "nilai": val,
             })
+            if unit:
+                rows[-1]["satuan"] = unit
 
     if not rows:
         logger.warning("datacontent BPS ditemukan tetapi tidak ada nilai yang berhasil di-decode.")

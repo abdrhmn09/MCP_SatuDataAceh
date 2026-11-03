@@ -54,7 +54,7 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         self.assertIsNotNone(source)
-        self.assertEqual(source["variable"], "245")
+        self.assertEqual(source["variable"], "74")
 
     async def test_bps_mapping_pengangguran_tersedia(self):
         """TPT terpetakan di BPS_INDICATOR_MAP."""
@@ -130,6 +130,18 @@ class BpsParserTests(unittest.TestCase):
         result = bps_payload_ke_csv(payload)
         self.assertEqual(result, "")
 
+    def test_parser_datacontent_list_kosong_tidak_crash(self):
+        """BPS mengembalikan datacontent: [] saat data tahun tersebut belum tersedia."""
+        payload = self._buat_payload_bps()
+        payload["datacontent"] = []
+        self.assertEqual(bps_payload_ke_csv(payload), "")
+
+    def test_parser_tanpa_vervar_tidak_crash(self):
+        payload = self._buat_payload_bps()
+        payload["vervar"] = []
+        csv = bps_payload_ke_csv(payload)
+        self.assertIn("nilai", csv)
+
 
 class BpsKeywordTests(unittest.TestCase):
     """Tes untuk pencarian kata kunci ke variabel BPS."""
@@ -156,15 +168,26 @@ class BpsKeywordTests(unittest.TestCase):
         self.assertEqual(result["var"], "245")
         self.assertNotEqual(result["var"], "204")
 
-    def test_kata_kunci_ikan_tetap_mencocokkan_perikanan(self):
-        result = cari_var_bps_dari_kata_kunci("ikan")
-        self.assertIsNotNone(result)
-        self.assertEqual(result["var"], "204")
+    def test_kata_kunci_ikan_tidak_lagi_memaksa_perikanan(self):
+        """Tidak ada var BPS perikanan tangkap yang berisi data, jadi jangan menebak."""
+        self.assertIsNone(cari_var_bps_dari_kata_kunci("ikan"))
 
-    def test_kata_kunci_guru_dan_sekolah_mencocokkan_pendidikan(self):
-        self.assertEqual(cari_var_bps_dari_kata_kunci("guru")["var"], "245")
-        self.assertEqual(cari_var_bps_dari_kata_kunci("sekolah")["var"], "245")
-        self.assertEqual(cari_var_bps_dari_kata_kunci("murid")["var"], "245")
+    def test_kata_kunci_guru_dan_sekolah_tidak_lagi_mencocokkan_rls(self):
+        """RLS bukan indikator guru/murid. Lebih baik tidak ada mapping daripada salah."""
+        self.assertIsNone(cari_var_bps_dari_kata_kunci("guru"))
+        self.assertIsNone(cari_var_bps_dari_kata_kunci("sekolah"))
+        self.assertIsNone(cari_var_bps_dari_kata_kunci("murid"))
+
+    def test_kata_kunci_pdrb_mengarah_ke_pertumbuhan_tahunan(self):
+        result = cari_var_bps_dari_kata_kunci("pdrb")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["var"], "403")
+
+    def test_kata_kunci_sayur_mengarah_ke_produksi_sayuran(self):
+        result = cari_var_bps_dari_kata_kunci("sayur")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["var"], "581")
+        self.assertEqual(result["defaultTh"], "123")
 
     def test_indicator_map_mencakup_minimal_10_indikator(self):
         self.assertGreaterEqual(len(BPS_INDICATOR_MAP), 10)
@@ -203,6 +226,98 @@ class BandinganDataTests(unittest.IsolatedAsyncioTestCase):
         with patch("src.server._rate_limiter.allow", new=AsyncMock(return_value=False)):
             result = await bandingkan_data("kemiskinan")
         self.assertIn("Batas permintaan", result)
+
+
+class KesepadananTests(unittest.TestCase):
+    """Regresi: perbandingan yang berbeda satuan/indikator tidak boleh dilabeli sepadan."""
+
+    def test_garis_kemiskinan_vs_persentase_miskin_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Garis Kemiskinan Aceh",
+            "Persentase Penduduk Miskin (P0) menurut Kabupaten/Kota",
+            "kemiskinan",
+            "Rupiah/Kapita/Bulan",
+            "Persen",
+        )
+        self.assertFalse(sepadan)
+        self.assertIn("Satuan tidak sepadan", alasan)
+
+    def test_stunting_vs_harapan_lama_sekolah_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Prevalensi Stunting",
+            "Harapan Lama Sekolah",
+            "stunting",
+            "Persen",
+            "Tahun",
+        )
+        self.assertFalse(sepadan)
+        self.assertTrue("Satuan tidak sepadan" in alasan or "Indikator tidak sepadan" in alasan)
+
+    def test_guru_vs_rls_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Jumlah Guru SMP",
+            "Rata-rata Lama Sekolah",
+            "guru",
+            "Orang",
+            "Tahun",
+        )
+        self.assertFalse(sepadan)
+        self.assertTrue("Satuan tidak sepadan" in alasan or "Indikator tidak sepadan" in alasan)
+
+    def test_sayur_vs_ihk_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Produksi Tanaman Sayur-Sayuran",
+            "Indeks Harga Konsumen (IHK) menurut Kelompok Konsumsi",
+            "sayur",
+            "Kuintal",
+            "Tidak Ada Satuan",
+        )
+        self.assertFalse(sepadan)
+        self.assertIn("Indikator tidak sepadan", alasan)
+
+    def test_kontribusi_pdrb_vs_laju_pertumbuhan_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Kontribusi Sektor Perikanan Terhadap PDRB",
+            "Laju Pertumbuhan PDRB Tahunan ADHK",
+            "pdrb",
+            "Persen",
+            "Persen",
+        )
+        self.assertFalse(sepadan)
+        self.assertIn("Jenis ukuran tidak sepadan", alasan)
+
+    def test_pdrb_per_kapita_skala_rupiah_berbeda_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "PDRB Per Kapita Provinsi Aceh",
+            "PDRB Per Kapita Tahunan ADHB",
+            "PDRB",
+            "Juta Rupiah",
+            "Ribu Rupiah",
+        )
+        self.assertFalse(sepadan)
+        self.assertIn("Skala satuan tidak sepadan", alasan)
+
+    def test_satuan_massa_berbeda_tidak_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Produksi Padi",
+            "Produksi Padi",
+            "padi",
+            "ton GKG",
+            "Kuintal",
+        )
+        self.assertFalse(sepadan)
+        self.assertIn("Satuan massa tidak sepadan", alasan)
+
+    def test_indikator_sama_tetap_sepadan(self):
+        sepadan, alasan = server._cek_kesepadanan_indikator(
+            "Persentase Penduduk Miskin Aceh Menurut Kabupaten/Kota",
+            "Persentase Penduduk Miskin (P0) menurut Kabupaten/Kota",
+            "kemiskinan",
+            "Persen",
+            "Persen",
+        )
+        self.assertTrue(sepadan)
+        self.assertIn("sepadan", alasan)
 
 
 if __name__ == "__main__":
