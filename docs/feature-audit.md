@@ -19,6 +19,8 @@ Laporan 3 November 2026 mencakup delapan tool, bukan pengujian langsung seluruh 
 
 Status CSV `valid` berarti format dapat dibaca. Kolom indikator yang ambigu tidak dipilih sembarang. Pemeriksaan wilayah/tahun/subperiode/kategori menggunakan metadata baris yang tersedia dan dapat menghasilkan status belum pasti. Nama wilayah tidak dipaksa menjadi kode wilayah BPS, dan kesamaan angka per observasi tidak disimpulkan.
 
+Jika judul menyebut inflasi tahun ke tahun tetapi kolom pengukuran menyebut inflasi bulanan, audit melaporkan konflik metadata frekuensi. Tool tidak memutuskan definisi mana yang benar dan tidak menyamakan angka sebelum metadata dikonfirmasi.
+
 Periode BPS diambil dari metadata dengan batas permintaan agar tool tidak berjalan tanpa batas. Jika sebagian metadata tidak diperiksa, hasil tidak diberi label sebagai rilis terbaru yang tersedia. Gunakan bps_request untuk analisis dengan pemilihan variabel, periode, dan dimensi yang eksplisit.
 
 ## Verifikasi

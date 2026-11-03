@@ -727,10 +727,11 @@ def _cek_kesepadanan_indikator(
     judul_lower = judul_sda.lower()
     bps_lower = label_bps.lower()
     def inflation_period(text):
-        for name, pattern in [('yoy',r'y-on-y|yoy|tahun ke tahun'),('mom',r'm-to-m|mtm|bulan ke bulan|\bbulanan\b'),('ytd',r'y-to-d|ytd|tahun kalender')]:
-            if re.search(pattern,text): return name
-        return ''
+        matches = [name for name, pattern in [('yoy',r'y-on-y|yoy|tahun ke tahun'),('mom',r'm-to-m|mtm|bulan ke bulan|\bbulanan\b'),('ytd',r'y-to-d|ytd|tahun kalender')] if re.search(pattern,text)]
+        return 'conflict' if len(matches)>1 else matches[0] if matches else ''
     period_a, period_b = inflation_period(judul_lower), inflation_period(bps_lower)
+    if 'conflict' in {period_a,period_b}:
+        return False, 'Kesepadanan belum dapat dipastikan: konflik metadata frekuensi antara judul, label, atau kolom pengukuran.'
     if period_a and period_b and period_a != period_b:
         return False, 'Konsep inflasi tidak sepadan: bulanan, tahun kalender, dan tahun ke tahun berbeda.'
     if ('inflasi' in judul_lower and ('ihk' in bps_lower or 'indeks harga konsumen' in bps_lower)) or ('inflasi' in bps_lower and ('ihk' in judul_lower or 'indeks harga konsumen' in judul_lower)):

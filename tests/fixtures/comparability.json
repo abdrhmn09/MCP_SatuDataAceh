@@ -131,5 +131,12 @@
     "unit_a": "Persen",
     "unit_b": "Indeks",
     "status": "incomparable"
+  },
+  {
+    "title": "Tingkat Inflasi Tahun ke Tahun Provinsi Aceh tingkat inflasi bulanan",
+    "label": "Inflasi Tahun ke Tahun (y-on-y) (2022=100)",
+    "unit_a": "Persen",
+    "unit_b": "Persen",
+    "status": "unknown"
   }
 ]
