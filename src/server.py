@@ -1,5 +1,8 @@
 import pandas as pd
 from io import StringIO
+from importlib.resources import files
+from pathlib import Path
+from datetime import datetime, timezone
 import asyncio
 import httpx
 import ipaddress
@@ -8,6 +11,7 @@ import logging
 import os
 import re
 import time
+import socket
 from collections import deque
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -21,17 +25,54 @@ from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+def _redact_secret(value: str) -> str:
+    value = re.sub(r"(/key/)[^/?#\s]+", r"\1***", value, flags=re.IGNORECASE)
+    key = os.getenv("BPS_API_KEY", "")
+    return value.replace(key, "***") if key else value
+
+
+class _SecretFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _redact_secret(record.getMessage())
+        record.args = ()
+        return True
+
+
+def _load_env_file() -> None:
+    for base in [os.getcwd(), os.path.dirname(os.path.abspath(__file__)), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]:
+        env_path = os.path.join(base, ".env")
+        if os.path.isfile(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k, v = k.strip(), v.strip()
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+_load_env_file()
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(_SecretFilter())
+
+
+
 # Impor fungsi pengelola cache dari package maupun direct script.
 try:
-    from .cache import muat_katalog
+    from .cache import muat_katalog, catalog_status
 except ImportError:
-    from cache import muat_katalog
+    from cache import muat_katalog, catalog_status
 
 class SearchResult(BaseModel):
     id: str
@@ -42,6 +83,9 @@ class SearchResult(BaseModel):
 class SearchOutput(BaseModel):
     results: list[SearchResult]
     message: str | None = None
+    total: int = 0
+    offset: int = 0
+    next_offset: int | None = None
 
 
 class FetchOutput(BaseModel):
@@ -79,18 +123,38 @@ class _RateLimiter:
     def __init__(self, limit: int, window_seconds: int = 60):
         self.limit = max(1, limit)
         self.window_seconds = window_seconds
-        self.requests = deque()
+        self.clients: dict[str, deque[float]] = {}
         self.lock = asyncio.Lock()
 
-    async def allow(self) -> bool:
+    async def allow(self, client_key: str | None = None) -> bool:
         now = time.monotonic()
+        key = client_key if client_key is not None else _request_client_key()
         async with self.lock:
-            while self.requests and now - self.requests[0] >= self.window_seconds:
-                self.requests.popleft()
-            if len(self.requests) >= self.limit:
+            if key not in self.clients:
+                for old_key in list(self.clients):
+                    if not self.clients[old_key] or now - self.clients[old_key][-1] >= self.window_seconds:
+                        del self.clients[old_key]
+                if len(self.clients) >= 10_000:
+                    return False
+                self.clients[key] = deque()
+            requests = self.clients[key]
+            while requests and now - requests[0] >= self.window_seconds:
+                requests.popleft()
+            if len(requests) >= self.limit:
                 return False
-            self.requests.append(now)
+            requests.append(now)
             return True
+
+
+def _request_client_key() -> str:
+    """Use the transport peer; proxy headers require trust configured by the host."""
+    try:
+        request = mcp.get_context().request_context.request
+        if request and request.client:
+            return request.client.host
+    except (LookupError, RuntimeError, AttributeError, ValueError):
+        pass
+    return "local"
 
 
 # Host hanya dibuka ke publik saat deployment remote memilih MCP_HOST=0.0.0.0.
@@ -100,12 +164,15 @@ _MCP_PORT = _env_int("MCP_PORT", _env_int("PORT", 8000))
 try:
     from mcp.server.transport_security import TransportSecuritySettings
     _transport_security = TransportSecuritySettings(
-        enable_dns_rebinding_protection=False
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["localhost:*", "127.0.0.1:*", "[::1]:*", *[host.strip() for host in os.getenv("MCP_ALLOWED_HOSTS", "www.mcpsatudataaceh.web.id,mcpsatudataaceh.web.id").split(",") if host.strip()]],
+        allowed_origins=[origin.strip() for origin in os.getenv("MCP_ALLOWED_ORIGINS", "https://www.mcpsatudataaceh.web.id,https://mcpsatudataaceh.web.id").split(",") if origin.strip()]
     )
 except ImportError:
     _transport_security = None
 
 try:
+    _security_at_runtime = False
     mcp = FastMCP(
         "Satu Data Aceh Server",
         instructions="Mencari dataset publik Aceh dan membaca data CSV.",
@@ -115,28 +182,11 @@ try:
     )
 except TypeError:
     # mcp>=2 MCPServer tidak menerima host/port di constructor
+    _security_at_runtime = True
     mcp = FastMCP(
         name="Satu Data Aceh Server",
         instructions="Mencari dataset publik Aceh dan membaca data CSV.",
     )
-def _load_env_file() -> None:
-    for base in [os.getcwd(), os.path.dirname(os.path.abspath(__file__)), os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]:
-        env_path = os.path.join(base, ".env")
-        if os.path.isfile(env_path):
-            try:
-                with open(env_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            k, v = k.strip(), v.strip()
-                            if k and k not in os.environ:
-                                os.environ[k] = v
-                break
-            except Exception:
-                pass
-
-_load_env_file()
 
 MAX_CSV_BYTES = 5 * 1024 * 1024
 MAX_HTML_BYTES = 2 * 1024 * 1024
@@ -172,15 +222,33 @@ def _url_aman(url: str) -> bool:
             address = ipaddress.ip_address(hostname)
         except ValueError:
             return True
-        return not (
-            address.is_private
-            or address.is_loopback
-            or address.is_link_local
-            or address.is_reserved
-            or address.is_multicast
-        )
+        return address.is_global and not address.is_multicast
     except (TypeError, ValueError):
         return False
+
+
+async def _validate_request_target(request: httpx.Request) -> None:
+    """Reject private addresses returned by DNS before outbound HTTP requests."""
+    if not _url_aman(str(request.url)):
+        raise httpx.RequestError("URL tujuan tidak diizinkan.", request=request)
+    loop = asyncio.get_running_loop()
+    try:
+        addresses = await asyncio.wait_for(
+            loop.getaddrinfo(request.url.host, request.url.port or 443, type=socket.SOCK_STREAM),
+            timeout=5,
+        )
+    except (OSError, TimeoutError) as error:
+        raise httpx.RequestError("DNS tujuan tidak dapat diperiksa.", request=request) from error
+    if not addresses or any(not ipaddress.ip_address(entry[4][0]).is_global for entry in addresses):
+        raise httpx.RequestError("DNS tujuan bukan alamat publik.", request=request)
+    # Connect to the checked IP, preserving HTTP Host and TLS certificate/SNI
+    # validation for the original hostname. This prevents a second DNS lookup
+    # from changing the destination between validation and connection.
+    address = next((entry[4][0] for entry in addresses if entry[0] == socket.AF_INET), addresses[0][4][0])
+    hostname = request.url.host
+    request.headers["Host"] = request.url.netloc.decode("ascii")
+    request.extensions["sni_hostname"] = hostname
+    request.url = request.url.copy_with(host=address)
 
 
 class _CsvLinkParser(HTMLParser):
@@ -209,7 +277,7 @@ async def _cari_link_csv(url_halaman: str) -> str | None:
         return None
     try:
         timeout = httpx.Timeout(20.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, event_hooks={"request": [_validate_request_target]}) as client:
             chunks = []
             total_bytes = 0
             async with client.stream("GET", url_halaman) as response:
@@ -282,12 +350,12 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
     # 1. Coba env override
     try:
         env_mapping: dict[str, str] = json.loads(_BPS_DATASET_MAP_ENV)
-        if identifier in env_mapping:
+        if isinstance(env_mapping, dict) and isinstance(env_mapping.get(identifier), str) and env_mapping[identifier]:
             return {
                 "domain": BPS_DOMAIN,
                 "variable": str(env_mapping[identifier]),
                 "defaultTh": "124",
-                "reference_url": _halaman_dataset(item),
+                "reference_url": "https://webapi.bps.go.id/",
             }
     except (TypeError, ValueError):
         pass
@@ -300,7 +368,7 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
             "variable": str(entry["var"]),
             "label": str(entry.get("label", "")),
             "defaultTh": str(entry.get("defaultTh", "124")),
-            "reference_url": _halaman_dataset(item),
+            "reference_url": "https://webapi.bps.go.id/",
         }
 
     return None
@@ -311,8 +379,8 @@ def _bps_url(source: dict[str, str], th: str = "124") -> str:
         "https://webapi.bps.go.id/v1/api/list/model/data/"
         f"domain/{quote(source['domain'], safe='')}/"
         f"var/{quote(source['variable'], safe='')}/"
-        f"th/{quote(th, safe='')}/"
-        f"key/{quote(BPS_API_KEY, safe='')}"
+        + (f"th/{quote(th, safe='')}/" if th else "")
+        + f"key/{quote(BPS_API_KEY, safe='')}"
     )
 
 
@@ -332,29 +400,41 @@ def _bps_payload_to_csv(payload: object) -> str:
     return frame.to_csv(index=False)
 
 
+async def _read_bps_payload(url: str) -> object:
+    chunks = []
+    size = 0
+    async with asyncio.timeout(30):
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=False) as client:
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > MAX_CSV_BYTES:
+                        raise ValueError("Respons BPS terlalu besar.")
+                    chunks.append(chunk)
+    return json.loads(b"".join(chunks))
+
+
 async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[str, str]] | None:
     """Ambil data dari BPS sebagai fallback untuk dataset Satu Data Aceh yang kosong."""
     source = _bps_source(item)
     if not source or not BPS_API_KEY:
         return None
-    kandidat_th = [source.get("defaultTh"), "124", "123", "122"]
+    kandidat_th = ["", source.get("defaultTh"), "124", "123", "122"]
     sudah_dicoba: set[str] = set()
     for th in kandidat_th:
-        if not th or th in sudah_dicoba:
+        if th is None or th in sudah_dicoba:
             continue
         sudah_dicoba.add(th)
         url = _bps_url(source, th=th)
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-                response = await client.get(url)
-                if not response.is_success:
-                    continue
-                teks_csv = bps_payload_ke_csv(response.json())
+            teks_csv = bps_payload_ke_csv(await _read_bps_payload(url))
             if not teks_csv:
                 continue
             return _analisis_csv(teks_csv, url, 50), source
         except (
             httpx.HTTPError,
+            TimeoutError,
             ValueError,
             TypeError,
             KeyError,
@@ -375,30 +455,27 @@ async def _ambil_langsung_dari_bps(
     """
     if not BPS_API_KEY:
         return None
-    th_candidates = [default_th, "124", "123", "122"] if default_th else ["124", "123", "122"]
+    th_candidates = ["", default_th, "124", "123", "122"]
     sudah_dicoba: set[str] = set()
     for th in th_candidates:
-        if not th or th in sudah_dicoba:
+        if th is None or th in sudah_dicoba:
             continue
         sudah_dicoba.add(th)
         url = (
             f"https://webapi.bps.go.id/v1/api/list/model/data/"
             f"domain/{quote(domain, safe='')}/"
             f"var/{quote(var_id, safe='')}/"
-            f"th/{quote(th, safe='')}/"
-            f"key/{quote(BPS_API_KEY, safe='')}"
+            + (f"th/{quote(th, safe='')}/" if th else "")
+            + f"key/{quote(BPS_API_KEY, safe='')}"
         )
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
-                response = await client.get(url)
-                if not response.is_success:
-                    continue
-                teks_csv = bps_payload_ke_csv(response.json())
+            teks_csv = bps_payload_ke_csv(await _read_bps_payload(url))
             if not teks_csv:
                 continue
             return _analisis_csv(teks_csv, url, 50), url
         except (
             httpx.HTTPError,
+            TimeoutError,
             ValueError,
             TypeError,
             KeyError,
@@ -421,16 +498,9 @@ def _ekstrak_tahun_dari_df(df: pd.DataFrame) -> tuple[str, str]:
     years: list[int] = []
     if tahun_col is not None:
         for val in df[tahun_col].dropna():
-            match = re.search(r"\b(19\d{2}|20[0-2]\d)\b", str(val))
+            match = re.search(r"\b(19\d{2}|20\d{2})\b", str(val))
             if match:
                 years.append(int(match.group(1)))
-
-    if not years:
-        for col in df.columns:
-            for val in df[col].dropna().head(100):
-                match = re.search(r"\b(19\d{2}|20[0-2]\d)\b", str(val))
-                if match:
-                    years.append(int(match.group(1)))
 
     if years:
         return str(min(years)), str(max(years))
@@ -454,7 +524,7 @@ def _deteksi_kolom_indikator(df: pd.DataFrame) -> tuple[str, str]:
     for col in df.columns:
         if str(col).lower().strip() in {"satuan", "unit"}:
             vals = df[col].dropna().unique()
-            if len(vals) > 0:
+            if len(vals) == 1:
                 satuan = str(vals[0])
             break
 
@@ -474,30 +544,16 @@ def _deteksi_kolom_indikator(df: pd.DataFrame) -> tuple[str, str]:
     return kolom_terpilih, satuan
 
 
-def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict[str, object]]:
+_package_files = files(__package__) if __package__ else Path(__file__).parent
+_search_synonyms = json.loads(_package_files.joinpath("search_rules.json").read_text(encoding="utf-8"))
+
+
+def _cocokkan_dataset(katalog: list[dict[str, object]], query: str, max_results: int = 5) -> list[dict[str, object]]:
     query_clean = query.lower().strip()
     if not query_clean:
         return []
 
-    synonyms = {
-        "kemiskinan": ["kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"],
-        "miskin": ["kemiskinan", "miskin", "penduduk miskin"],
-        "bps": ["bps", "badan pusat statistik", "susenas"],
-        "pendidikan": ["pendidikan", "sekolah", "guru", "murid", "siswa", "lama sekolah"],
-        "ipm": ["ipm", "indeks pembangunan manusia", "pembangunan manusia"],
-        "pengangguran": ["pengangguran", "tpt", "tingkat pengangguran terbuka"],
-        "tpt": ["tpt", "tingkat pengangguran terbuka"],
-        "kesehatan": ["kesehatan", "stunting", "gizi", "puskesmas", "rumah sakit"],
-        "ihk": ["ihk", "indeks harga konsumen", "inflasi"],
-        "inflasi": ["inflasi", "ihk", "indeks harga konsumen"],
-        "rls": ["rls", "rata-rata lama sekolah", "rata rata lama sekolah"],
-        "hls": ["hls", "harapan lama sekolah"],
-        "uhh": ["uhh", "umur harapan hidup", "angka harapan hidup"],
-        "pdrb": ["pdrb", "produk domestik regional bruto", "pertumbuhan ekonomi"],
-        "padi": ["padi"],
-        "sayur": ["sayur", "sayuran"],
-        "stunting": ["stunting", "prevalensi stunting"],
-    }
+    synonyms = _search_synonyms
 
     terms = {query_clean}
     query_tokens = [t for t in query_clean.split() if len(t) > 1]
@@ -511,7 +567,7 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
         identifier = str(item.get("identifier", ""))
         title = str(item.get("title", "")).lower()
         desc = str(item.get("description", "")).lower()
-        keywords = [str(k).lower() for k in item.get("keyword", []) if isinstance(k, str)]
+        keywords = [str(k).lower() for k in (item.get("keyword") or []) if isinstance(k, str)]
         publisher = item.get("publisher", {})
         nama_penerbit = str(publisher.get("name", "")).lower() if isinstance(publisher, dict) else ""
 
@@ -590,36 +646,14 @@ def _cocokkan_dataset(katalog: list[dict[str, object]], query: str) -> list[dict
         scored.append((score, item))
 
     scored.sort(key=lambda entry: entry[0], reverse=True)
-    return [item for _, item in scored[:5]]
+    return [item for _, item in scored[:max_results]]
 
 
-_UNIT_FAMILIES: dict[str, tuple[str, ...]] = {
-    "persen": ("persen", "percent", "%"),
-    "rupiah": ("rupiah", "idr", "rp"),
-    "massa": ("ton", "kuintal", "kwintal", "kilogram", "kg", "gram"),
-    "jumlah": ("jiwa", "orang", "unit", "rumah tangga", "hektare", "hektar"),
-    "tahun": ("tahun",),
-    "indeks": ("poin", "indeks", "index"),
-}
+_comparison_rules = json.loads(_package_files.joinpath("comparison_rules.json").read_text(encoding="utf-8"))
 
-_INDICATOR_FAMILIES: dict[str, tuple[str, ...]] = {
-    "kemiskinan": ("miskin", "kemiskinan", "garis kemiskinan"),
-    "ipm": ("ipm", "indeks pembangunan manusia"),
-    "rls": ("rata-rata lama sekolah", "rata rata lama sekolah", "rls"),
-    "hls": ("harapan lama sekolah", "hls"),
-    "uhh": ("umur harapan hidup", "uhh", "angka harapan hidup"),
-    "pengangguran": ("pengangguran", "tpt", "kesempatan kerja"),
-    "pdrb": ("pdrb", "produk domestik regional bruto", "pertumbuhan ekonomi", "laju pertumbuhan"),
-    "inflasi": ("inflasi", "ihk", "indeks harga konsumen"),
-    "gini": ("gini", "ketimpangan"),
-    "padi": ("padi",),
-    "perikanan": ("perikanan", "ikan", "tangkap", "budidaya"),
-    "pendidikan": ("guru", "murid", "siswa"),
-    "stunting": ("stunting",),
-    "kesehatan": ("kesehatan", "fasyankes", "puskesmas", "tenaga kesehatan"),
-    "penduduk": ("penduduk",),
-    "sayur": ("sayur",),
-}
+_UNIT_FAMILIES = _comparison_rules["_UNIT_FAMILIES"]
+
+_INDICATOR_FAMILIES = _comparison_rules["_INDICATOR_FAMILIES"]
 
 
 def _keluarga_satuan(nilai: str) -> str:
@@ -688,10 +722,9 @@ def _cek_kesepadanan_indikator(
     """
     judul_lower = judul_sda.lower()
     bps_lower = label_bps.lower()
-    q_lower = query.lower()
 
     # 1. Cek tingkat wilayah (Nasional vs Daerah Aceh)
-    if "nasional" in judul_lower and "nasional" not in bps_lower and "nasional" not in q_lower:
+    if ("nasional" in judul_lower) != ("nasional" in bps_lower) or ("indonesia" in judul_lower) != ("indonesia" in bps_lower):
         return False, "Cakupan wilayah berbeda: Satu Data Aceh berisi data agregat Nasional, sedangkan BPS berisi data tingkat Provinsi Aceh / Kabupaten/Kota."
 
     # 2. Cek dimensi disagregasi (Jenis Kelamin vs Total/Agregat)
@@ -715,7 +748,7 @@ def _cek_kesepadanan_indikator(
             return False, f"Konsep indikator tidak sepadan: Data BPS berisi komponen sektoral ({komp_label}), sedangkan Satu Data Aceh adalah Indeks Pembangunan Manusia (IPM) komposit."
 
     # 4. Cek ketidakcocokan konsep administratif
-    if "paud" in judul_lower and "paud" not in bps_lower:
+    if ("paud" in judul_lower) != ("paud" in bps_lower):
         return False, "Konsep indikator tidak sepadan: Satu Data Aceh adalah data kegiatan/PAUD, bukan indikator statistik makro BPS."
 
     # 5. Cek satuan. Perbandingan angka hanya bermakna bila keluarga satuannya sama.
@@ -727,7 +760,7 @@ def _cek_kesepadanan_indikator(
             f"Satuan tidak sepadan: Satu Data Aceh memakai satuan '{satuan_sda}', "
             f"sedangkan BPS memakai '{satuan_bps}'.",
         )
-    if keluarga_sda == keluarga_bps == "rupiah":
+    if keluarga_sda == keluarga_bps and keluarga_sda in {"rupiah", "jumlah"}:
         skala_sda = _skala_satuan(satuan_sda)
         skala_bps = _skala_satuan(satuan_bps)
         if skala_sda != skala_bps and (skala_sda or skala_bps):
@@ -746,6 +779,16 @@ def _cek_kesepadanan_indikator(
                 f"sedangkan BPS memakai '{satuan_bps}'.",
             )
 
+    if keluarga_sda == keluarga_bps == "jumlah":
+        def dimension(unit: str) -> str:
+            unit = unit.lower()
+            if any(x in unit for x in ("hektar", "hectare", "ha")): return "luas"
+            if "rumah tangga" in unit: return "rumah tangga"
+            if any(x in unit for x in ("orang", "jiwa")): return "orang"
+            return "unit"
+        if dimension(satuan_sda) != dimension(satuan_bps):
+            return False, "Dimensi satuan tidak sepadan."
+
     # 6. Cek keluarga indikator. Jika kedua judul jelas-jelas membahas indikator
     #    yang berbeda (mis. stunting vs harapan lama sekolah), jangan paksakan
     #    perbandingan hanya karena query pengguna mengandung satu kata kunci.
@@ -759,6 +802,18 @@ def _cek_kesepadanan_indikator(
             f"sedangkan BPS membahas {', '.join(sorted(keluarga_bps_set))}.",
         )
 
+    if ("penduduk" in judul_lower and "penduduk" in bps_lower
+            and bool(re.search(r"miskin|kemiskinan", judul_lower)) != bool(re.search(r"miskin|kemiskinan", bps_lower))):
+        return False, "Indikator tidak sepadan: penduduk total berbeda dari penduduk miskin."
+    if bool(re.search(r"per\s*kapita|percapita", judul_lower)) != bool(re.search(r"per\s*kapita|percapita", bps_lower)):
+        return False, "Dimensi per kapita berbeda."
+    def basis_harga(text: str) -> str:
+        if "adhk" in text or "harga konstan" in text: return "konstan"
+        if "adhb" in text or "harga berlaku" in text: return "berlaku"
+        return ""
+    if basis_harga(judul_lower) and basis_harga(bps_lower) and basis_harga(judul_lower) != basis_harga(bps_lower):
+        return False, "Basis harga tidak sepadan (ADHB vs ADHK)."
+
     # 7. Cek jenis ukuran (kontribusi/pangsa vs laju pertumbuhan vs indeks).
     ukuran_sda = _jenis_ukuran(judul_sda)
     ukuran_bps = _jenis_ukuran(label_bps)
@@ -769,7 +824,9 @@ def _cek_kesepadanan_indikator(
             f"sedangkan BPS mengukur '{ukuran_bps}'.",
         )
 
-    return True, "Kedua indikator sepadan untuk dibandingkan."
+    if not keluarga_sda or not keluarga_bps or not keluarga_judul or not keluarga_bps_set:
+        return False, "Kesepadanan belum dapat dipastikan: metadata indikator atau satuan belum cukup."
+    return True, "Konsep dan satuan sepadan; cocokkan wilayah, kategori, dan periode sebelum membandingkan angka."
 
 
 def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult:
@@ -802,7 +859,7 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
     indikator_bps = ""
     if "indikator" in df.columns and "kode_wilayah" in df.columns:
         nilai_indikator = df["indikator"].dropna().unique()
-        if len(nilai_indikator) > 0:
+        if len(nilai_indikator) == 1:
             indikator_bps = str(nilai_indikator[0])
     preview = df.head(baris_maksimal).to_markdown(index=False)
     return CsvReadResult(
@@ -822,7 +879,7 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
 
 async def _unduh_csv(url: str, baris_maksimal: int) -> CsvReadResult:
     timeout = httpx.Timeout(30.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, event_hooks={"request": [_validate_request_target]}) as client:
         chunks = []
         total_bytes = 0
         async with client.stream("GET", url) as response:
@@ -840,11 +897,11 @@ async def _unduh_csv(url: str, baris_maksimal: int) -> CsvReadResult:
 
 @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
 async def health(_: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "service": "satu-data-aceh-mcp"})
+    return JSONResponse({"status": "ok", "service": "satu-data-aceh-mcp", "catalog": catalog_status()})
 
 
 @mcp.tool()
-async def search(query: str) -> SearchOutput:
+async def search(query: str, wilayah: str = "", produsen: str = "", limit: int = 5, offset: int = 0) -> SearchOutput:
     """Mencari dataset Aceh dan mengembalikan hasil dengan URL yang dapat dikutip."""
     if not await _rate_limiter.allow():
         return SearchOutput(
@@ -852,11 +909,23 @@ async def search(query: str) -> SearchOutput:
             message="Batas permintaan tercapai. Coba lagi beberapa saat.",
         )
     query = query.strip() if isinstance(query, str) else ""
+    if len(query) > 500 or len(wilayah) > 200 or len(produsen) > 200:
+        return SearchOutput(results=[], message="Parameter pencarian terlalu panjang.")
     if not query:
         return SearchOutput(results=[])
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50 or isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        return SearchOutput(results=[], message="limit harus 1–50 dan offset harus bilangan bulat nonnegatif.")
     katalog = await muat_katalog()
+    filtered = []
+    for item in katalog:
+        text = " ".join(str(item.get(key) or "") for key in ("title", "description", "keyword")).lower()
+        publisher = item.get("publisher")
+        name = str(publisher.get("name", "")) if isinstance(publisher, dict) else ""
+        if wilayah.strip().lower() in text and produsen.strip().lower() in name.lower():
+            filtered.append(item)
+    matches = _cocokkan_dataset(filtered, query, max_results=len(filtered))
     results = []
-    for item in _cocokkan_dataset(katalog, query):
+    for item in matches[offset:offset + limit]:
         identifier = str(item.get("identifier", ""))
         results.append(
             SearchResult(
@@ -865,7 +934,7 @@ async def search(query: str) -> SearchOutput:
                 url=_halaman_dataset(item) or _url_csv_item(item),
             )
         )
-    return SearchOutput(results=results)
+    return SearchOutput(results=results, total=len(matches), offset=offset, next_offset=offset + limit if offset + limit < len(matches) else None)
 
 
 @mcp.tool()
@@ -930,7 +999,7 @@ async def fetch(id: str) -> FetchOutput:
             "failed", "", 0, 0, csv_url, f"Gagal mengunduh file CSV dari portal (HTTP {type(error).__name__})."
         )
     except (UnicodeDecodeError, ValueError) as error:
-        logger.warning("Format CSV tidak valid untuk dataset %s (%s): %s", clean_id, csv_url, error)
+        logger.warning("Format CSV tidak valid untuk dataset %s: %s", clean_id, type(error).__name__)
         result = CsvReadResult("invalid", "", 0, 0, csv_url, "Format file bukan CSV valid atau encoding tidak didukung.")
 
     source = "Satu Data Aceh"
@@ -948,7 +1017,7 @@ async def fetch(id: str) -> FetchOutput:
     period_display = (
         f"{result.tahun_min}–{result.tahun_max}"
         if result.tahun_min and result.tahun_min != result.tahun_max
-        else (result.tahun_max or str(item.get("modified") or item.get("issued") or ""))
+        else result.tahun_max
     )
     return FetchOutput(
         id=clean_id,
@@ -957,11 +1026,15 @@ async def fetch(id: str) -> FetchOutput:
         url=_halaman_dataset(item) or csv_url,
         metadata={
             "publisher": publisher,
-            "csv_url": csv_url,
+            "catalog": catalog_status(),
+            "csv_url": _redact_secret(csv_url),
             "landing_url": _halaman_dataset(item),
             "source": source,
             "reference_source": reference_source,
             "period": period_display,
+            "published_at": item.get("issued", ""),
+            "modified_at": item.get("modified", ""),
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "observation_start": result.tahun_min,
             "observation_end": result.tahun_max,
             "kolom_indikator": result.kolom_indikator,
@@ -1129,6 +1202,9 @@ async def bandingkan_data(indikator: str) -> str:
                 continue
             try:
                 res = await _unduh_csv(csv_url, 20)
+                if res.status == "valid":
+                    selected_sda_item, result_sda = item, res
+                    break
                 if selected_sda_item is None:
                     selected_sda_item = item
                     result_sda = res
@@ -1136,7 +1212,7 @@ async def bandingkan_data(indikator: str) -> str:
                     selected_sda_item = item
                     result_sda = res
                     break
-            except httpx.HTTPError:
+            except (httpx.HTTPError, UnicodeDecodeError, ValueError, TimeoutError, OSError):
                 if selected_sda_item is None:
                     selected_sda_item = item
                     result_sda = CsvReadResult("failed", "", 0, 0, csv_url, "Gagal mengunduh file CSV.")
@@ -1246,7 +1322,9 @@ async def bandingkan_data(indikator: str) -> str:
         result_bps.satuan if result_bps else "",
     )
 
-    if not is_sepadan and sda_status == "valid" and bps_status == "valid":
+    if not is_sepadan and alasan_kesepadanan.startswith("Kesepadanan belum") and sda_status == "valid" and bps_status == "valid":
+        rekomendasi = f"⚠️ **Kesepadanan Belum Dapat Dipastikan**: {alasan_kesepadanan}"
+    elif not is_sepadan and sda_status == "valid" and bps_status == "valid":
         rekomendasi = (
             f"⚠️ **Incomparable (Tidak Sepadan Secara Langsung)**\n"
             f"- **Catatan Metodologi**: {alasan_kesepadanan}\n"
@@ -1259,7 +1337,9 @@ async def bandingkan_data(indikator: str) -> str:
         max_sda = int(result_sda.tahun_max) if result_sda and result_sda.tahun_max.isdigit() else 0
         max_bps = int(result_bps.tahun_max) if result_bps and result_bps.tahun_max.isdigit() else 0
 
-        if max_bps > max_sda and max_bps > 0:
+        if not max_sda or not max_bps:
+            rekomendasi = "Tahun observasi belum cukup untuk menentukan sumber terbaru."
+        elif max_bps > max_sda and max_bps > 0:
             rekomendasi = (
                 f"✅ **BPS** menyediakan data observasi terbaru (tahun **{max_bps}**), "
                 f"sedangkan **Satu Data Aceh** menyediakan data hingga tahun **{max_sda}** "
@@ -1274,7 +1354,7 @@ async def bandingkan_data(indikator: str) -> str:
             )
         else:
             rekomendasi = (
-                f"✅ Kedua sumber menyediakan data yang sepadan dengan tahun observasi setara (**{max_bps or max_sda}**).\n"
+                f"✅ Kedua sumber menyediakan data yang sepadan dengan tahun observasi setara (**{max_bps or max_sda or 'tidak diketahui'}**).\n"
                 f"- **Rekomendasi**: Angka BPS dan Satu Data Aceh dapat saling melengkapi."
             )
     elif bps_status == "valid":
@@ -1304,9 +1384,9 @@ def main() -> None:
     if transport == "stdio":
         mcp.run(transport=transport)
     else:
-        try:
-            mcp.run(transport=transport, host=_MCP_HOST, port=_MCP_PORT)
-        except TypeError:
+        if _security_at_runtime:
+            mcp.run(transport=transport, host=_MCP_HOST, port=_MCP_PORT, transport_security=_transport_security)
+        else:
             mcp.run(transport=transport)
 
 

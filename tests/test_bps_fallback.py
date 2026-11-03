@@ -140,7 +140,7 @@ class BpsParserTests(unittest.TestCase):
         payload = self._buat_payload_bps()
         payload["vervar"] = []
         csv = bps_payload_ke_csv(payload)
-        self.assertIn("nilai", csv)
+        self.assertEqual(csv, "")
 
 
 class BpsKeywordTests(unittest.TestCase):
@@ -215,7 +215,8 @@ class BandinganDataTests(unittest.IsolatedAsyncioTestCase):
             }
         ]
         with patch("src.server.muat_katalog", new=AsyncMock(return_value=katalog)), \
-             patch("src.server.BPS_API_KEY", ""):
+             patch("src.server.BPS_API_KEY", ""), \
+             patch("src.server._unduh_csv", new=AsyncMock(return_value=server.CsvReadResult("header_only", "", 0, 2, "https://example.com/data.csv"))):
             result = await bandingkan_data("kemiskinan")
         self.assertIn("Sumber 1", result)
         self.assertIn("Sumber 2", result)

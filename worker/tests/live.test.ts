@@ -3,9 +3,7 @@ import { fetchFromBpsDirect, createServer } from "../src/index";
 import { cariVarBpsDariKataKunci } from "../src/bps";
 
 // Menggunakan API Key untuk pengujian integrasi live BPS
-const apiKey = typeof process !== "undefined" && process.env?.BPS_API_KEY
-  ? process.env.BPS_API_KEY
-  : "8df9707992442cf8a5b8140a6b2939ea";
+const apiKey = process.env.BPS_API_KEY || "";
 
 const liveEnv = {
   CATALOG_URL: "https://satudata.acehprov.go.id/data.json",
@@ -17,7 +15,7 @@ const liveEnv = {
   BPS_DATASET_MAP: "{}",
 };
 
-describe("Live BPS Web API Integration Tests (Cloudflare Worker)", () => {
+describe.skipIf(!apiKey)("Live BPS Web API Integration Tests (Cloudflare Worker)", () => {
   it("BPS API key terdeteksi dengan panjang 32 karakter", () => {
     expect(apiKey).toBeDefined();
     expect(apiKey.length).toBe(32);

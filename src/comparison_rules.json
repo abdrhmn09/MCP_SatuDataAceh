@@ -1,0 +1,112 @@
+{
+  "_UNIT_FAMILIES": {
+    "persen": [
+      "persen",
+      "percent",
+      "%"
+    ],
+    "rupiah": [
+      "rupiah",
+      "idr",
+      "rp"
+    ],
+    "massa": [
+      "ton",
+      "kuintal",
+      "kwintal",
+      "kilogram",
+      "kg",
+      "gram"
+    ],
+    "jumlah": [
+      "jiwa",
+      "orang",
+      "unit",
+      "rumah tangga",
+      "hektare",
+      "hektar"
+    ],
+    "tahun": [
+      "tahun"
+    ],
+    "indeks": [
+      "poin",
+      "indeks",
+      "index"
+    ]
+  },
+  "_INDICATOR_FAMILIES": {
+    "kemiskinan": [
+      "miskin",
+      "kemiskinan",
+      "garis kemiskinan"
+    ],
+    "ipm": [
+      "ipm",
+      "indeks pembangunan manusia"
+    ],
+    "rls": [
+      "rata-rata lama sekolah",
+      "rata rata lama sekolah",
+      "rls"
+    ],
+    "hls": [
+      "harapan lama sekolah",
+      "hls"
+    ],
+    "uhh": [
+      "umur harapan hidup",
+      "uhh",
+      "angka harapan hidup"
+    ],
+    "pengangguran": [
+      "pengangguran",
+      "tpt",
+      "kesempatan kerja"
+    ],
+    "pdrb": [
+      "pdrb",
+      "produk domestik regional bruto",
+      "pertumbuhan ekonomi",
+      "laju pertumbuhan"
+    ],
+    "inflasi": [
+      "inflasi",
+      "ihk",
+      "indeks harga konsumen"
+    ],
+    "gini": [
+      "gini",
+      "ketimpangan"
+    ],
+    "padi": [
+      "padi"
+    ],
+    "perikanan": [
+      "perikanan",
+      "ikan",
+      "tangkap",
+      "budidaya"
+    ],
+    "pendidikan": [
+      "guru",
+      "murid",
+      "siswa"
+    ],
+    "stunting": [
+      "stunting"
+    ],
+    "kesehatan": [
+      "kesehatan",
+      "fasyankes",
+      "puskesmas",
+      "tenaga kesehatan"
+    ],
+    "penduduk": [
+      "penduduk"
+    ],
+    "sayur": [
+      "sayur"
+    ]
+  }
+}

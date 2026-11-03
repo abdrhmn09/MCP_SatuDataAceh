@@ -9,7 +9,9 @@ services:
         value: sse
       - key: MCP_HOST
         value: 0.0.0.0
-      - key: SATU_DATA_ACEH_DATA_YEAR
-        value: "2025"
       - key: MCP_RATE_LIMIT_PER_MINUTE
         value: "60"
+      - key: MCP_ALLOWED_HOSTS
+        value: satu-data-aceh-mcp.onrender.com,www.mcpsatudataaceh.web.id,mcpsatudataaceh.web.id
+      - key: MCP_ALLOWED_ORIGINS
+        value: https://satu-data-aceh-mcp.onrender.com,https://www.mcpsatudataaceh.web.id,https://mcpsatudataaceh.web.id

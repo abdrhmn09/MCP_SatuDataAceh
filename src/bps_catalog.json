@@ -1,0 +1,232 @@
+{
+  "indicators": {
+    "0116d97b-1b4a-4c6a-a243-33833660fb85": {
+      "var": "42",
+      "label": "Persentase Penduduk Miskin (P0) menurut Kabupaten/Kota",
+      "category": "kemiskinan",
+      "defaultTh": "124"
+    },
+    "5832d12b-52b2-44b2-b85c-0a3bd89782f3": {
+      "var": "74",
+      "label": "Indeks Pembangunan Manusia (IPM) menurut Kabupaten/Kota",
+      "category": "ipm",
+      "defaultTh": "124"
+    },
+    "78794e4b-2bbe-45ef-abd1-0a65c2e98702": {
+      "var": "74",
+      "label": "Indeks Pembangunan Manusia (IPM) menurut Kabupaten/Kota",
+      "category": "ipm",
+      "defaultTh": "124"
+    },
+    "f2585d70-70d1-49f9-8c78-6750a46e1780": {
+      "var": "245",
+      "label": "Rata-rata Lama Sekolah menurut Kabupaten/Kota",
+      "category": "pendidikan",
+      "defaultTh": "124"
+    },
+    "97e549de-0a20-452a-9948-455abe2532a8": {
+      "var": "206",
+      "label": "Tingkat Pengangguran Terbuka (TPT) menurut Kabupaten/Kota",
+      "category": "ketenagakerjaan",
+      "defaultTh": "124"
+    },
+    "22d3b2b0-8c0e-46cb-915d-7780fd4e1158": {
+      "var": "403",
+      "label": "Laju Pertumbuhan PDRB Tahunan Atas Dasar Harga Konstan (ADHK)",
+      "category": "pdrb",
+      "defaultTh": "124"
+    },
+    "95ceff6a-c0d9-4ef5-b6cb-86eee4764833": {
+      "var": "434",
+      "label": "PDRB Per Kapita Tahunan Atas Dasar Harga Berlaku (ADHB)",
+      "category": "pdrb",
+      "defaultTh": "124"
+    },
+    "e8c8605b-5ce1-4637-be23-9108837e89c9": {
+      "var": "564",
+      "label": "Inflasi Tahun ke Tahun (y-on-y)",
+      "category": "inflasi",
+      "defaultTh": "124"
+    },
+    "0c63d096-1671-4afd-94b5-39048d378e56": {
+      "var": "60",
+      "label": "Gini Rasio menurut Klasifikasi Desa/Kota",
+      "category": "ketimpangan",
+      "defaultTh": "124"
+    },
+    "d8c8a7f0-d329-4872-8546-294fd6267c7b": {
+      "var": "574",
+      "label": "Luas Panen, Produktivitas, dan Produksi Padi menurut Kabupaten/Kota",
+      "category": "pertanian",
+      "defaultTh": "123"
+    },
+    "21cece89-360f-480d-a3e9-a841a79e752d": {
+      "var": "581",
+      "label": "Produksi Tanaman Sayuran menurut Kabupaten/Kota dan Jenis Tanaman",
+      "category": "pertanian",
+      "defaultTh": "123"
+    }
+  },
+  "keywords": {
+    "pendidikan": {
+      "var": "245",
+      "label": "Rata-rata Lama Sekolah",
+      "defaultTh": "124"
+    },
+    "lama sekolah": {
+      "var": "245",
+      "label": "Rata-rata Lama Sekolah",
+      "defaultTh": "124"
+    },
+    "rata-rata lama sekolah": {
+      "var": "245",
+      "label": "Rata-rata Lama Sekolah",
+      "defaultTh": "124"
+    },
+    "rls": {
+      "var": "245",
+      "label": "Rata-rata Lama Sekolah",
+      "defaultTh": "124"
+    },
+    "harapan lama sekolah": {
+      "var": "246",
+      "label": "Harapan Lama Sekolah",
+      "defaultTh": "124"
+    },
+    "hls": {
+      "var": "246",
+      "label": "Harapan Lama Sekolah",
+      "defaultTh": "124"
+    },
+    "aps": {
+      "var": "92",
+      "label": "Angka Partisipasi Sekolah (APS)",
+      "defaultTh": "124"
+    },
+    "kemiskinan": {
+      "var": "42",
+      "label": "Persentase Penduduk Miskin",
+      "defaultTh": "124"
+    },
+    "miskin": {
+      "var": "42",
+      "label": "Persentase Penduduk Miskin",
+      "defaultTh": "124"
+    },
+    "penduduk miskin": {
+      "var": "42",
+      "label": "Persentase Penduduk Miskin",
+      "defaultTh": "124"
+    },
+    "jumlah penduduk miskin": {
+      "var": "41",
+      "label": "Jumlah Penduduk Miskin",
+      "defaultTh": "124"
+    },
+    "garis kemiskinan": {
+      "var": "45",
+      "label": "Garis Kemiskinan",
+      "defaultTh": "124"
+    },
+    "ipm": {
+      "var": "74",
+      "label": "Indeks Pembangunan Manusia (IPM)",
+      "defaultTh": "124"
+    },
+    "indeks pembangunan manusia": {
+      "var": "74",
+      "label": "Indeks Pembangunan Manusia (IPM)",
+      "defaultTh": "124"
+    },
+    "pembangunan manusia": {
+      "var": "74",
+      "label": "Indeks Pembangunan Manusia (IPM)",
+      "defaultTh": "124"
+    },
+    "umur harapan hidup": {
+      "var": "244",
+      "label": "Umur Harapan Hidup (UHH)",
+      "defaultTh": "124"
+    },
+    "uhh": {
+      "var": "244",
+      "label": "Umur Harapan Hidup (UHH)",
+      "defaultTh": "124"
+    },
+    "angka harapan hidup": {
+      "var": "244",
+      "label": "Angka Harapan Hidup",
+      "defaultTh": "124"
+    },
+    "pengeluaran perkapita": {
+      "var": "247",
+      "label": "Pengeluaran Perkapita Disesuaikan",
+      "defaultTh": "124"
+    },
+    "pengangguran": {
+      "var": "206",
+      "label": "Tingkat Pengangguran Terbuka",
+      "defaultTh": "124"
+    },
+    "tpt": {
+      "var": "206",
+      "label": "Tingkat Pengangguran Terbuka",
+      "defaultTh": "124"
+    },
+    "pdrb": {
+      "var": "403",
+      "label": "Laju Pertumbuhan PDRB Tahunan (ADHK)",
+      "defaultTh": "124"
+    },
+    "pertumbuhan ekonomi": {
+      "var": "403",
+      "label": "Laju Pertumbuhan Ekonomi",
+      "defaultTh": "124"
+    },
+    "laju pertumbuhan": {
+      "var": "403",
+      "label": "Laju Pertumbuhan Ekonomi",
+      "defaultTh": "124"
+    },
+    "inflasi": {
+      "var": "564",
+      "label": "Laju Inflasi Tahun ke Tahun",
+      "defaultTh": "124"
+    },
+    "ihk": {
+      "var": "2",
+      "label": "Indeks Harga Konsumen",
+      "defaultTh": "124"
+    },
+    "gini": {
+      "var": "60",
+      "label": "Rasio Gini",
+      "defaultTh": "124"
+    },
+    "rasio gini": {
+      "var": "60",
+      "label": "Rasio Gini",
+      "defaultTh": "124"
+    },
+    "padi": {
+      "var": "574",
+      "label": "Produksi Padi",
+      "defaultTh": "123"
+    },
+    "produksi padi": {
+      "var": "574",
+      "label": "Produksi Padi",
+      "defaultTh": "123"
+    },
+    "sayur": {
+      "var": "581",
+      "label": "Produksi Tanaman Sayuran",
+      "defaultTh": "123"
+    },
+    "sayuran": {
+      "var": "581",
+      "label": "Produksi Tanaman Sayuran",
+      "defaultTh": "123"
+    }
+  }
+}

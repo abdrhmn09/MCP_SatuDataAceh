@@ -1,4 +1,5 @@
 import unittest
+from contextlib import asynccontextmanager
 from unittest.mock import patch
 
 import httpx
@@ -16,9 +17,11 @@ class FailingClient:
     async def __aexit__(self, *args):
         return None
 
-    async def get(self, url):
+    @asynccontextmanager
+    async def stream(self, method, url):
         request = httpx.Request("GET", url)
         raise httpx.RequestError("offline", request=request)
+        yield  # async context manager never reaches this point
 
 
 class CacheFailureTests(unittest.IsolatedAsyncioTestCase):

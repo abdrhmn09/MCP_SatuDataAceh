@@ -1,4 +1,6 @@
 import asyncio
+import json
+from contextlib import asynccontextmanager
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +17,9 @@ class FakeResponse:
     def json(self):
         return self.payload
 
+    async def aiter_bytes(self):
+        yield json.dumps(self.payload).encode()
+
 
 class FakeClient:
     calls = 0
@@ -29,10 +34,11 @@ class FakeClient:
     async def __aexit__(self, *args):
         return None
 
-    async def get(self, url):
+    @asynccontextmanager
+    async def stream(self, method, url):
         type(self).calls += 1
         await asyncio.sleep(0)
-        return FakeResponse(type(self).payload)
+        yield FakeResponse(type(self).payload)
 
 
 class CacheTests(unittest.IsolatedAsyncioTestCase):

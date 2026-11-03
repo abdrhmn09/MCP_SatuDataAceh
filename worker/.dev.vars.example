@@ -1,0 +1,3 @@
+# Copy to .dev.vars for local development only.
+# Production: wrangler secret put BPS_API_KEY
+BPS_API_KEY=

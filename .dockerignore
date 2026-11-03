@@ -6,5 +6,10 @@ __pycache__
 .github
 .gitignore
 tests
-data.json
 satu_data_aceh_mcp.egg-info
+worker
+node_modules
+.env
+.env.*
+**/.dev.vars*
+.xgrok

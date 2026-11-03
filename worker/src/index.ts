@@ -1,3 +1,8 @@
+import searchSynonyms from "../../src/search_rules.json";
+import { isPublicHttpsUrl, readPublicText, redactSecrets } from "./http";
+import { parseCsv, encodeCsv, observationMetadata } from "./csv";
+import { compareIndicators } from "./comparison";
+export { isPublicHttpsUrl } from "./http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
@@ -43,7 +48,11 @@ export interface SearchResult {
 }
 
 export interface CsvAnalysis {
-  status: "valid" | "header_only" | "empty" | "html";
+  status: "valid" | "header_only" | "empty" | "html" | "invalid";
+  observationStart?: string;
+  observationEnd?: string;
+  unit?: string;
+  indicator?: string;
   text: string;
   preview: string;
   rowCount: number;
@@ -55,43 +64,33 @@ export interface BpsSource {
   domain: string;
   variable: string;
   referenceUrl: string;
+  label?: string;
+  defaultTh?: string;
 }
 
 const MAX_CSV_BYTES = 5 * 1024 * 1024;
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_ROWS = 50;
-const cache = new Map<string, { expiresAt: number; datasets: Dataset[] }>();
-const requestTimes: number[] = [];
+const cache = new Map<string, { expiresAt: number; fetchedAt: number; stale: boolean; datasets: Dataset[] }>();
+const requestTimes = new Map<string, number[]>();
 
 function envInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function isPublicHttpsUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password) return false;
-    const hostname = url.hostname.toLowerCase();
-    return ![
-      "localhost",
-      "localhost.localdomain",
-      "127.0.0.1",
-      "::1",
-      "0.0.0.0",
-      "169.254.169.254",
-    ].includes(hostname) && !hostname.endsWith(".localhost");
-  } catch {
-    return false;
-  }
-}
-
-export function allowRequest(env: Env): boolean {
+export function allowRequest(env: Env, clientKey = "local"): boolean {
   const limit = Math.max(1, envInt(env.MAX_REQUESTS_PER_MINUTE, 60));
   const now = Date.now();
-  while (requestTimes.length && now - requestTimes[0] >= 60_000) requestTimes.shift();
-  if (requestTimes.length >= limit) return false;
-  requestTimes.push(now);
+  if (!requestTimes.has(clientKey)) {
+    for (const [key, times] of requestTimes) if (!times.length || now - times[times.length - 1] >= 60_000) requestTimes.delete(key);
+    if (requestTimes.size >= 10_000) return false;
+    requestTimes.set(clientKey, []);
+  }
+  const times = requestTimes.get(clientKey)!;
+  while (times.length && now - times[0] >= 60_000) times.shift();
+  if (times.length >= limit) return false;
+  times.push(now);
   return true;
 }
 
@@ -135,7 +134,7 @@ export function csvUrl(dataset: Dataset, env: Env): string {
     if (hostname === "satudata.acehprov.go.id") {
       const id = encodeURIComponent(datasetId(dataset));
       if (id) {
-        return `https://satudata.acehprov.go.id/api/datasets/${id}/datasources/download?tahun=${encodeURIComponent(datasetYear(dataset, env))}`;
+        return `https://satudata.acehprov.go.id/api/datasets/${id}/datasources/download`;
       }
     }
   } catch {
@@ -166,7 +165,7 @@ export function bpsSource(dataset: Dataset, env: Env): BpsSource | null {
   } catch {
     // Ignore JSON parse errors
   }
-  let variable = mapping[identifier] || (identifier === "621" ? "621" : "");
+  let variable = mapping && typeof mapping === "object" && !Array.isArray(mapping) && typeof mapping[identifier] === "string" ? mapping[identifier] : "";
   if (!variable && identifier in BPS_INDICATOR_MAP) {
     variable = BPS_INDICATOR_MAP[identifier].var;
   }
@@ -175,28 +174,22 @@ export function bpsSource(dataset: Dataset, env: Env): BpsSource | null {
   return {
     domain,
     variable,
-    referenceUrl: datasetPage(dataset),
+    referenceUrl: `https://webapi.bps.go.id/`,
+    label: BPS_INDICATOR_MAP[identifier]?.var === variable ? BPS_INDICATOR_MAP[identifier].label : "",
+    defaultTh: BPS_INDICATOR_MAP[identifier]?.defaultTh,
   };
 }
 
 export function bpsUrl(source: BpsSource, env: Env, thParam: string = "124"): string {
-  return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}/th/${encodeURIComponent(thParam)}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
+  return `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(source.domain)}/var/${encodeURIComponent(source.variable)}${thParam ? `/th/${encodeURIComponent(thParam)}` : ""}/key/${encodeURIComponent(env.BPS_API_KEY || "")}/`;
 }
 
 export async function fetchBpsJson(
   url: string,
 ): Promise<{ ok: boolean; payload?: unknown; status?: number; error?: string }> {
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-      },
-    });
-
-    const textBody = await response.text();
+    const textBody = await readPublicText(url, MAX_CSV_BYTES);
+    const response = { status: 200 };
     if (!textBody || !textBody.trim()) {
       return {
         ok: false,
@@ -221,21 +214,21 @@ export async function fetchBpsJson(
       return {
         ok: false,
         status: response.status,
-        error: `Gagal mengurai respons JSON dari BPS (HTTP ${response.status}): ${parseError instanceof Error ? parseError.message : "Invalid JSON"}. Cuplikan: ${trimmed.slice(0, 100)}`,
+        error: "Respons JSON BPS tidak valid.",
       };
     }
   } catch (error) {
     return {
       ok: false,
-      error: `Gagal terhubung ke BPS Web API: ${error instanceof Error ? error.message : "Network error"}`,
+      error: "Gagal terhubung ke BPS Web API.",
     };
   }
 }
 
-export async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analysis: CsvAnalysis; source: BpsSource } | null> {
+export async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analysis: CsvAnalysis; source: BpsSource; url: string } | null> {
   const source = bpsSource(dataset, env);
   if (!source || !env.BPS_API_KEY) return null;
-  const thCandidates = ["124", "123", "122"];
+  const thCandidates = ["", ...new Set([source.defaultTh || "124", "124", "123", "122"])];
   for (const th of thCandidates) {
     const url = bpsUrl(source, env, th);
     const result = await fetchBpsJson(url);
@@ -250,7 +243,7 @@ export async function fetchFromBps(dataset: Dataset, env: Env): Promise<{ analys
     if (!text) {
       continue;
     }
-    return { analysis: analyzeCsvText(text, MAX_ROWS), source };
+    return { analysis: analyzeCsvText(text, MAX_ROWS), source, url: redactSecrets(url) };
   }
   return null;
 }
@@ -276,13 +269,13 @@ export async function fetchFromBpsDirect(
       diagnostic: "API Key belum disetel. Jalankan: npx wrangler secret put BPS_API_KEY",
     };
   }
-  const thCandidates = preferredTh ? [preferredTh, "124", "123"] : ["124", "123", "122"];
+  const thCandidates = ["", ...new Set([preferredTh || "124", "124", "123", "122"])];
   let lastDiag = "Data tidak ditemukan di BPS.";
   let lastUrl = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/124/key/***/`;
 
   for (const th of thCandidates) {
-    const url = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}/th/${encodeURIComponent(th)}/key/${encodeURIComponent(env.BPS_API_KEY)}/`;
-    lastUrl = url;
+    const url = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varId)}${th ? `/th/${encodeURIComponent(th)}` : ""}/key/${encodeURIComponent(env.BPS_API_KEY)}/`;
+    lastUrl = redactSecrets(url);
     const result = await fetchBpsJson(url);
     if (!result.ok || !result.payload) {
       lastDiag = result.error || "Gagal mengambil data dari BPS.";
@@ -300,7 +293,7 @@ export async function fetchFromBpsDirect(
     }
     return {
       analysis: analyzeCsvText(text, maxRows),
-      url,
+      url: redactSecrets(url),
       diagnostic: diag.message,
     };
   }
@@ -319,65 +312,101 @@ export async function fetchFromBpsDirect(
   };
 }
 
-export async function loadCatalog(env: Env): Promise<Dataset[]> {
-  const now = Date.now();
-  const ttl = Math.max(60, envInt(env.CATALOG_TTL_SECONDS, 3600)) * 1000;
-  const cached = cache.get(env.CATALOG_URL);
-  if (cached && cached.expiresAt > now) return cached.datasets;
-
-  const response = await fetch(env.CATALOG_URL);
-  if (!response.ok) throw new Error(`Catalog request failed: ${response.status}`);
-  const payload = (await response.json()) as CatalogResponse;
-  const datasets = Array.isArray(payload.dataset)
-    ? payload.dataset.filter((item): item is Dataset => Boolean(item && typeof item === "object"))
-    : [];
-  if (!datasets.length) throw new Error("Catalog does not contain a dataset array");
-  cache.set(env.CATALOG_URL, { expiresAt: now + ttl, datasets });
-  return datasets;
+export function catalogStatus(env: Env) {
+  const state = cache.get(env.CATALOG_URL);
+  return { loaded: Boolean(state), source: state ? state.stale ? "stale" : "remote" : "unavailable",
+    stale: Boolean(state && (state.stale || state.expiresAt <= Date.now())),
+    dataset_count: state?.datasets.length || 0, last_success_at: state ? state.fetchedAt / 1000 : null };
 }
 
-function searchableText(dataset: Dataset): string {
-  const publisher = dataset.publisher && typeof dataset.publisher === "object"
-    ? asText((dataset.publisher as Record<string, unknown>).name)
-    : "";
-  return [dataset.title, dataset.description, dataset.keyword, publisher, dataset.identifier]
-    .map(asText)
-    .join(" ")
-    .toLowerCase();
+const catalogFailures = new Map<string, number>();
+const catalogLoads = new Map<string, Promise<Dataset[]>>();
+export async function loadCatalog(env: Env): Promise<Dataset[]> {
+  const now = Date.now();
+  const cached = cache.get(env.CATALOG_URL);
+  if (!cached && (catalogFailures.get(env.CATALOG_URL) || 0) > now) throw new Error("Katalog tidak dapat diakses; coba kembali setelah jeda retry.");
+  if (cached && cached.expiresAt > now) return cached.datasets;
+  const pending = catalogLoads.get(env.CATALOG_URL);
+  if (pending) return pending;
+  const load = (async () => {
+    try {
+      const payload = JSON.parse(await readPublicText(env.CATALOG_URL, 32 * 1024 * 1024)) as CatalogResponse;
+      if (!Array.isArray(payload.dataset) || !payload.dataset.every(item => item && typeof item === "object" && !Array.isArray(item)))
+        throw new Error("Format katalog tidak valid.");
+      const datasets = payload.dataset as Dataset[];
+      cache.set(env.CATALOG_URL, { expiresAt: Date.now() + Math.max(60, envInt(env.CATALOG_TTL_SECONDS, 3600)) * 1000, fetchedAt: Date.now(), stale: false, datasets });
+      catalogFailures.delete(env.CATALOG_URL);
+      return datasets;
+    } catch {
+      catalogFailures.set(env.CATALOG_URL, Date.now() + 30_000);
+      if (cached) {
+        // Short retry delay prevents every client retrying an unavailable upstream.
+        cache.set(env.CATALOG_URL, { ...cached, stale: true, expiresAt: Date.now() + 30_000 });
+        console.warn("Catalog unavailable; serving stale cached catalog");
+        return cached.datasets;
+      }
+      throw new Error("Katalog tidak dapat diakses.");
+    }
+  })();
+  catalogLoads.set(env.CATALOG_URL, load);
+  try { return await load; } finally { catalogLoads.delete(env.CATALOG_URL); }
 }
 
 function normalizeTerms(query: string): string[] {
   const normalized = query.toLowerCase().trim();
-  const synonyms: Record<string, string[]> = {
-    kemiskinan: ["kemiskinan", "miskin", "garis kemiskinan", "penduduk miskin"],
-    miskin: ["kemiskinan", "miskin", "penduduk miskin"],
-    bps: ["bps", "badan pusat statistik", "susenas"],
-    pendidikan: ["pendidikan", "sekolah", "guru", "murid", "siswa", "lama sekolah"],
-  };
+  const synonyms: Record<string, string[]> = searchSynonyms;
   const terms = new Set<string>(normalized ? [normalized] : []);
-  for (const token of normalized.split(/\s+/).filter(Boolean)) {
+  for (const token of normalized.split(/\s+/).filter(token => token.length > 1)) {
     terms.add(token);
     for (const syn of synonyms[token] ?? []) terms.add(syn);
   }
   return [...terms];
 }
 
-export function matchDatasets(datasets: Dataset[], query: string): Dataset[] {
+export function matchDatasets(datasets: Dataset[], query: string, maxResults = 5): Dataset[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return [];
   const terms = normalizeTerms(query);
-  if (!terms.length) return [];
   const scored: { score: number; dataset: Dataset }[] = [];
-
   for (const dataset of datasets) {
-    const text = searchableText(dataset);
-    const title = datasetTitle(dataset).toLowerCase();
-    const matched = terms.filter((term) => text.includes(term));
-    if (!matched.length) continue;
-    const score = matched.length + matched.filter((term) => title.includes(term)).length * 2;
+    const title = asText(dataset.title).toLowerCase();
+    const desc = asText(dataset.description).toLowerCase();
+    const keywords = Array.isArray(dataset.keyword) ? dataset.keyword.filter((v): v is string => typeof v === "string").map(v => v.toLowerCase()) : [];
+    const publisher = dataset.publisher && typeof dataset.publisher === "object" ? asText((dataset.publisher as Record<string, unknown>).name).toLowerCase() : "";
+    let score = title.includes(normalized) ? 40 : 0;
+    for (const term of terms) {
+      if (title.includes(term)) score += 12;
+      if (keywords.some(keyword => keyword.includes(term))) score += 6;
+      if (desc.includes(term)) score += 2;
+      if (publisher.includes(term)) score += 2;
+    }
+    if (!score) continue;
+    const curated = BPS_INDICATOR_MAP[datasetId(dataset)];
+    if (curated) { score += 10; if (normalized.includes(curated.category)) score += 40; }
+    if (["bps", "badan pusat statistik", "bappeda"].some(term => publisher.includes(term))) score += 5;
+    if (title.includes("aceh")) score += 8;
+    if (title.includes("kabupaten") || title.includes("kota")) score += 4;
+    if ((title.includes("nasional") || title.includes("indonesia")) && !normalized.includes("nasional") && !normalized.includes("indonesia")) score -= 20;
+    if (title.includes("miskin") && !normalized.includes("miskin") && !normalized.includes("kemiskinan")) score -= 25;
+    if (title.includes("jumlah penduduk") && normalized.includes("penduduk") && !normalized.includes("miskin") && !normalized.includes("kemiskinan") &&
+        !["berumur", "bekerja", "angkatan kerja", "pekerjaan", "status kawin", "agama", "golongan darah", "disabilitas", "jenjang pendidikan"].some(term => title.includes(term))) score += 35;
+    for (const term of ["paud", "sop", "aktivitas", "rutin", "penyelenggaraan", "tata kelola", "belanja", "barang jasa", "pengadaan"])
+      if (title.includes(term) && !normalized.includes(term)) score -= 30;
     scored.push({ score, dataset });
   }
+  return scored.sort((a, b) => b.score - a.score).slice(0, maxResults).map(item => item.dataset);
+}
 
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 5).map((item) => item.dataset);
+export function searchCatalog(datasets: Dataset[], query: string, wilayah = "", produsen = "", limit = 5, offset = 0) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50 || !Number.isInteger(offset) || offset < 0) throw new Error("limit harus 1–50 dan offset nonnegatif.");
+  const filtered = datasets.filter(dataset => {
+    const text = [dataset.title, dataset.description, dataset.keyword].map(asText).join(" ").toLowerCase();
+    const publisher = dataset.publisher && typeof dataset.publisher === "object" ? asText((dataset.publisher as Record<string, unknown>).name) : "";
+    return text.includes(wilayah.trim().toLowerCase()) && publisher.toLowerCase().includes(produsen.trim().toLowerCase());
+  });
+  const matches = matchDatasets(filtered, query, filtered.length);
+  return { results: matches.slice(offset, offset + limit).map(dataset => ({ id: datasetId(dataset), title: datasetTitle(dataset), url: datasetPage(dataset) || datasetId(dataset) })),
+    total: matches.length, offset, next_offset: offset + limit < matches.length ? offset + limit : null };
 }
 
 export function searchDatasets(datasets: Dataset[], query: string): SearchResult[] {
@@ -388,123 +417,43 @@ export function searchDatasets(datasets: Dataset[], query: string): SearchResult
   }));
 }
 
-function parseCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (c === "," && !inQuotes) {
-      cells.push(cur);
-      cur = "";
-    } else {
-      cur += c;
-    }
-  }
-  cells.push(cur);
-  return cells;
-}
-
-export function csvToMarkdownTable(csvText: string, maxRows: number = 20): string {
-  const cleaned = csvText.replace(/^\uFEFF/, "").trim();
-  if (!cleaned) return "";
-  const lines = cleaned.split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return "";
-
-  const parsedRows = lines.slice(0, maxRows + 1).map(parseCsvLine);
-  if (!parsedRows.length) return "";
-  const header = parsedRows[0];
-  const colCount = header.length;
-  if (colCount === 0) return "";
-
-  const headerStr = `| ${header.map((h) => h.trim()).join(" | ")} |`;
-  const sepStr = `| ${header.map(() => "---").join(" | ")} |`;
-  const bodyStrs = parsedRows.slice(1).map((row) => {
-    const rowPadded = Array.from({ length: colCount }, (_, i) => (row[i] ?? "").trim());
-    return `| ${rowPadded.join(" | ")} |`;
-  });
-
-  return [headerStr, sepStr, ...bodyStrs].join("\n");
+export function csvToMarkdownTable(csvText: string, maxRows: number): string {
+  const rows = parseCsv(csvText);
+  if (!rows.length) return "";
+  const escape = (cell: string) => cell.replaceAll("|", "\\|").replace(/\r?\n/g, "<br>");
+  return [rows[0], rows[0].map(() => "---"), ...rows.slice(1, Math.max(1, Math.min(maxRows, MAX_ROWS)) + 1)]
+    .map(row => `| ${row.map(escape).join(" | ")} |`).join("\n");
 }
 
 export function parseCsvRows(text: string, maxRows: number): string {
-  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return "";
-  return lines.slice(0, Math.max(1, Math.min(maxRows, MAX_ROWS)) + 1).join("\n");
+  return encodeCsv(parseCsv(text).slice(0, Math.max(1, Math.min(maxRows, MAX_ROWS)) + 1));
 }
 
 export function analyzeCsvText(text: string, maxRows: number): CsvAnalysis {
   const cleaned = text.replace(/^\uFEFF/, "").trim();
-  if (!cleaned) {
-    return { status: "empty", text: "", preview: "", rowCount: 0, columnCount: 0, message: "File CSV tidak berisi data." };
+  const empty = { text: "", preview: "", rowCount: 0, columnCount: 0 };
+  if (!cleaned) return { ...empty, status: "empty", message: "File CSV tidak berisi data." };
+  if (cleaned.startsWith("<") && cleaned.slice(0, 500).toLowerCase().includes("html"))
+    return { ...empty, status: "html", message: "Sumber mengembalikan HTML, bukan CSV." };
+  try {
+    const rows = parseCsv(cleaned);
+    const rowCount = rows.length - 1, columnCount = rows[0].length;
+    if (!rowCount) return { ...empty, columnCount, status: "header_only", message: "CSV hanya berisi header." };
+    return { status: "valid", text: parseCsvRows(cleaned, maxRows), preview: csvToMarkdownTable(cleaned, maxRows),
+      rowCount, columnCount, ...observationMetadata(rows) };
+  } catch {
+    return { ...empty, status: "invalid", message: "Format CSV tidak valid." };
   }
-  if (cleaned.startsWith("<") && cleaned.slice(0, 500).toLowerCase().includes("html")) {
-    return { status: "html", text: "", preview: "", rowCount: 0, columnCount: 0, message: "Sumber mengembalikan halaman HTML, bukan CSV." };
-  }
-  const lines = cleaned.split(/\r?\n/).filter(Boolean);
-  const columnCount = parseCsvLine(lines[0]).length;
-  const rowCount = Math.max(0, lines.length - 1);
-  if (rowCount === 0) {
-    return { status: "header_only", text: "", preview: "", rowCount, columnCount, message: "Sumber CSV hanya berisi header tanpa observasi." };
-  }
-  const preview = csvToMarkdownTable(cleaned, maxRows);
-  return { status: "valid", text: parseCsvRows(cleaned, maxRows), preview, rowCount, columnCount };
 }
 
 export async function fetchCsvFromUrl(url: string, maxRows: number): Promise<CsvAnalysis> {
-  if (!isPublicHttpsUrl(url)) {
-    throw new Error("URL CSV harus menggunakan HTTPS dan alamat publik yang valid.");
-  }
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "text/csv, text/plain, application/json, */*",
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Gagal mengunduh file CSV dari URL tersebut (HTTP ${response.status}).`);
-  }
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > MAX_CSV_BYTES) {
-    return {
-      status: "empty",
-      text: "",
-      preview: "",
-      rowCount: 0,
-      columnCount: 0,
-      message: "File CSV terlalu besar untuk diproses (maksimal 5 MB).",
-    };
-  }
-  const body = await response.arrayBuffer();
-  if (body.byteLength > MAX_CSV_BYTES) {
-    return {
-      status: "empty",
-      text: "",
-      preview: "",
-      rowCount: 0,
-      columnCount: 0,
-      message: "File CSV terlalu besar untuk diproses (maksimal 5 MB).",
-    };
-  }
-  const text = new TextDecoder("utf-8").decode(body);
-  return analyzeCsvText(text, maxRows);
+  return analyzeCsvText(await readPublicText(url, MAX_CSV_BYTES), maxRows);
 }
 
 export async function findCsvLinkInHtml(pageUrl: string): Promise<string | null> {
   if (!isPublicHttpsUrl(pageUrl)) return null;
   try {
-    const response = await fetch(pageUrl);
-    if (!response.ok) return null;
-    const html = await response.text();
-    if (html.length > MAX_HTML_BYTES) return null;
+    const html = await readPublicText(pageUrl, MAX_HTML_BYTES);
     const linkMatches = html.matchAll(/<(?:a|link)\s+[^>]*href=["']([^"']+)["'][^>]*>/gi);
     for (const match of linkMatches) {
       const href = match[1];
@@ -527,7 +476,7 @@ async function fetchDatasetText(dataset: Dataset, env: Env): Promise<CsvAnalysis
   return fetchCsvFromUrl(url, MAX_ROWS);
 }
 
-export function createServer(env: Env): McpServer {
+export function createServer(env: Env, clientKey = "local"): McpServer {
   const server = new McpServer({
     name: "Satu Data Aceh Server",
     version: "0.2.0",
@@ -538,10 +487,16 @@ export function createServer(env: Env): McpServer {
     "search",
     {
       description: "Mencari dataset Aceh dan mengembalikan hasil dengan URL yang dapat dikutip.",
-      inputSchema: { query: z.string().describe("Kata kunci pencarian dataset") },
+      inputSchema: {
+        query: z.string().max(500).describe("Kata kunci pencarian dataset"),
+        wilayah: z.string().max(200).default("").describe("Filter wilayah pada metadata katalog"),
+        produsen: z.string().max(200).default("").describe("Filter nama produsen"),
+        limit: z.number().int().min(1).max(50).default(5),
+        offset: z.number().int().min(0).default(0),
+      },
     },
-    async ({ query }) => {
-      if (!allowRequest(env)) {
+    async ({ query, wilayah = "", produsen = "", limit = 5, offset = 0 }) => {
+      if (!allowRequest(env, clientKey)) {
         throw new Error("Batas permintaan tercapai. Coba lagi beberapa saat.");
       }
       const trimmed = asText(query).trim();
@@ -552,7 +507,7 @@ export function createServer(env: Env): McpServer {
         };
       }
       const datasets = await loadCatalog(env);
-      const payload = { results: searchDatasets(datasets, trimmed) };
+      const payload = searchCatalog(datasets, trimmed, wilayah, produsen, limit, offset);
       return {
         content: [{ type: "text", text: JSON.stringify(payload) }],
         structuredContent: payload,
@@ -568,7 +523,7 @@ export function createServer(env: Env): McpServer {
       inputSchema: { id: z.string().describe("Identifier dataset") },
     },
     async ({ id }) => {
-      if (!allowRequest(env)) {
+      if (!allowRequest(env, clientKey)) {
         throw new Error("Batas permintaan tercapai. Coba lagi beberapa saat.");
       }
       const datasets = await loadCatalog(env);
@@ -601,7 +556,7 @@ export function createServer(env: Env): McpServer {
           analysis = bps.analysis;
           source = "BPS";
           referenceSource = bps.source.referenceUrl;
-          sourceUrl = bpsUrl(bps.source, env);
+          sourceUrl = bps.url;
         }
       }
 
@@ -613,11 +568,19 @@ export function createServer(env: Env): McpServer {
         url: datasetPage(dataset) || directCsvUrl,
         metadata: {
           publisher: dataset.publisher ?? null,
-          csv_url: sourceUrl,
+          catalog: catalogStatus(env),
+          csv_url: redactSecrets(sourceUrl),
           landing_url: datasetPage(dataset),
           source,
           reference_source: referenceSource,
-          period: dataset.modified ?? dataset.issued ?? "",
+          period: analysis.observationEnd || "",
+          observation_start: analysis.observationStart || "",
+          observation_end: analysis.observationEnd || "",
+          satuan: analysis.unit || "",
+          indikator_bps: analysis.indicator || "",
+          published_at: dataset.issued ?? "",
+          modified_at: dataset.modified ?? "",
+          retrieved_at: new Date().toISOString(),
           status: analysis.status,
           row_count: analysis.rowCount,
           column_count: analysis.columnCount,
@@ -643,7 +606,7 @@ export function createServer(env: Env): McpServer {
       },
     },
     async ({ kata_kunci }) => {
-      if (!allowRequest(env)) {
+      if (!allowRequest(env, clientKey)) {
         return { content: [{ type: "text", text: "Batas permintaan tercapai. Coba lagi beberapa saat." }] };
       }
       const trimmed = asText(kata_kunci).trim();
@@ -717,7 +680,7 @@ export function createServer(env: Env): McpServer {
       },
     },
     async ({ url, baris_maksimal = 20 }) => {
-      if (!allowRequest(env)) {
+      if (!allowRequest(env, clientKey)) {
         return { content: [{ type: "text", text: "Batas permintaan tercapai. Coba lagi beberapa saat." }] };
       }
       if (!url || typeof url !== "string" || !isPublicHttpsUrl(url)) {
@@ -762,7 +725,7 @@ export function createServer(env: Env): McpServer {
       },
     },
     async ({ indikator }) => {
-      if (!allowRequest(env)) {
+      if (!allowRequest(env, clientKey)) {
         return { content: [{ type: "text", text: "Batas permintaan tercapai. Coba lagi beberapa saat." }] };
       }
       const trimmed = asText(indikator).trim();
@@ -781,33 +744,38 @@ export function createServer(env: Env): McpServer {
 
       // ── Cari di Satu Data Aceh ──
       const hasilSda = matchDatasets(datasets, trimmed);
+      hasilSda.sort((a, b) => Number(Boolean(bpsSource(b, env))) - Number(Boolean(bpsSource(a, env))));
+      if (!hasilSda.some(item => bpsSource(item, env))) {
+        const mapped = datasets.find(item => BPS_INDICATOR_MAP[datasetId(item)] && matchDatasets([item], trimmed).length);
+        if (mapped) hasilSda.unshift(mapped);
+      }
       let sdaStatus = "tidak_ditemukan";
       let sdaPeriode = "-";
       let sdaBaris = 0;
       let sdaTeks = "";
       let sdaJudul = "-";
       let sdaUrl = "-";
+      let sdaAnalysis: CsvAnalysis | undefined;
+      let bpsAnalysis: CsvAnalysis | undefined;
 
-      if (hasilSda.length > 0) {
-        const item = hasilSda[0];
-        sdaJudul = datasetTitle(item);
-        sdaUrl = datasetPage(item) || csvUrl(item, env);
+      let selectedSda: Dataset | undefined;
+      for (const item of hasilSda.slice(0, 3)) {
         const directUrl = csvUrl(item, env);
-        sdaPeriode = asText(item.modified || item.issued || "-");
-        if (directUrl && isPublicHttpsUrl(directUrl)) {
-          try {
-            const resultSda = await fetchCsvFromUrl(directUrl, 20);
-            sdaStatus = resultSda.status;
-            sdaBaris = resultSda.rowCount;
-            sdaTeks = resultSda.status === "valid" ? (resultSda.preview || resultSda.text) : (resultSda.message || "");
-          } catch (e) {
-            sdaStatus = "failed";
-            sdaTeks = `Gagal mengunduh: ${e instanceof Error ? e.message : "Network error"}`;
-          }
-        } else {
-          sdaStatus = "no_url";
-          sdaTeks = "Tidak ada URL CSV tersedia di katalog.";
+        if (!directUrl || !isPublicHttpsUrl(directUrl)) continue;
+        let result: CsvAnalysis;
+        try { result = await fetchCsvFromUrl(directUrl, 20); }
+        catch { result = { status: "invalid", text: "", preview: "", rowCount: 0, columnCount: 0, message: "Gagal mengunduh CSV portal." }; }
+        if (!selectedSda || result.status === "valid") {
+          selectedSda = item;
+          sdaAnalysis = result;
+          sdaJudul = datasetTitle(item);
+          sdaUrl = datasetPage(item) || directUrl;
+          sdaPeriode = result.observationEnd || "-";
+          sdaStatus = result.status;
+          sdaBaris = result.rowCount;
+          sdaTeks = result.status === "valid" ? result.preview || result.text : result.message || "";
         }
+        if (result.status === "valid") break;
       }
 
       bagian.push(
@@ -822,16 +790,16 @@ export function createServer(env: Env): McpServer {
       let bpsUrlTampil = "-";
       const domain = env.BPS_DOMAIN || "1100";
 
-      let varInfo: { var: string; label: string } | null = cariVarBpsDariKataKunci(trimmed);
-      if (hasilSda.length > 0) {
-        const bpsSrc = bpsSource(hasilSda[0], env);
+      let varInfo: { var: string; label: string; defaultTh?: string } | null = cariVarBpsDariKataKunci(trimmed);
+      if (selectedSda) {
+        const bpsSrc = bpsSource(selectedSda, env);
         if (bpsSrc) {
-          varInfo = { var: bpsSrc.variable, label: sdaJudul };
+          varInfo = { var: bpsSrc.variable, label: bpsSrc.label || "", defaultTh: bpsSrc.defaultTh };
         }
       }
 
       if (varInfo) {
-        bpsUrlTampil = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${domain}/var/${varInfo.var}/th/124/key/***`;
+        bpsUrlTampil = `https://webapi.bps.go.id/v1/api/list/model/data/domain/${encodeURIComponent(domain)}/var/${encodeURIComponent(varInfo.var)}/key/***`;
         const bpsResult = await fetchFromBpsDirect(
           varInfo.var,
           domain,
@@ -841,14 +809,13 @@ export function createServer(env: Env): McpServer {
         );
         if (bpsResult) {
           const resultBps = bpsResult.analysis;
-          bpsStatus = resultBps.status;
+          bpsAnalysis = resultBps;
+          if (resultBps.indicator) varInfo.label = resultBps.indicator;
+          bpsStatus = !env.BPS_API_KEY ? "api_key_tidak_ada" : resultBps.status;
           bpsBaris = resultBps.rowCount;
           if (resultBps.status === "valid") {
             bpsTeks = resultBps.preview || resultBps.text;
-            const tahunMatches = bpsTeks.match(/\b(20\d{2})\b/g);
-            if (tahunMatches && tahunMatches.length > 0) {
-              bpsPeriode = tahunMatches.reduce((max, y) => (y > max ? y : max), "0");
-            }
+            bpsPeriode = resultBps.observationEnd || "-";
           } else {
             bpsTeks = resultBps.message || bpsResult.diagnostic || "Data BPS tidak dapat diambil.";
           }
@@ -857,37 +824,36 @@ export function createServer(env: Env): McpServer {
           bpsTeks = "Gagal menghubungi BPS Web API.";
         }
       } else {
-        bpsTeks = `Tidak ditemukan variabel BPS yang dipetakan untuk indikator: '${trimmed}'.\nDaftar indikator yang didukung: pendidikan (RLS/HLS/APS), kemiskinan, IPM, pengangguran, inflasi, PDRB, gini, stunting, padi, sayuran, perikanan, peternakan, dan lainnya.`;
+        bpsTeks = `Tidak ditemukan variabel BPS yang dipetakan untuk indikator: '${trimmed}'.\nDaftar indikator yang didukung: pendidikan (RLS/HLS/APS), kemiskinan, IPM, pengangguran, inflasi, PDRB, gini, padi, dan sayuran.`;
       }
 
       bagian.push(
-        `## Sumber 2: BPS Web API (Domain 1100 – Provinsi Aceh)\n- **Status Data**: \`${bpsStatus}\` | **Baris**: ${bpsBaris} | **Tahun Terbaru Terdeteksi**: ${bpsPeriode}\n- **Indikator BPS**: ${varInfo ? varInfo.label : "-"} (var: ${varInfo ? varInfo.var : "-"})\n- **Endpoint**: \`${bpsUrlTampil}\`\n\n${bpsTeks ? bpsTeks : "_Data tidak tersedia._"}`,
+        `## Sumber 2: BPS Web API (Domain ${domain})\n- **Status Data**: \`${bpsStatus}\` | **Baris**: ${bpsBaris} | **Tahun Terbaru Terdeteksi**: ${bpsPeriode}\n- **Indikator BPS**: ${varInfo ? varInfo.label : "-"} (var: ${varInfo ? varInfo.var : "-"})\n- **Endpoint**: \`${bpsUrlTampil}\`\n\n${bpsTeks ? bpsTeks : "_Data tidak tersedia._"}`,
       );
 
-      // ── Kesimpulan ──
+      const comparison = compareIndicators(sdaJudul, varInfo?.label || "", sdaAnalysis?.unit, bpsAnalysis?.unit);
       let rekomendasi = "";
       if (sdaStatus === "valid" && bpsStatus === "valid") {
-        const tahunSdaMatches = (sdaPeriode + " " + sdaTeks).match(/\b(20\d{2})\b/g) || [];
-        const tahunBpsMatches = bpsPeriode.match(/\b(20\d{2})\b/g) || [];
-        const maxSda = tahunSdaMatches.reduce((max, y) => (y > max ? y : max), "0");
-        const maxBps = tahunBpsMatches.reduce((max, y) => (y > max ? y : max), "0");
-        if (maxBps >= maxSda && maxBps !== "0") {
-          rekomendasi = `✅ **BPS** menyediakan data hingga tahun **${maxBps}** (lebih baru atau setara). Gunakan data BPS sebagai referensi utama.`;
-        } else if (maxSda !== "0") {
-          rekomendasi = `✅ **Satu Data Aceh** menyediakan data hingga tahun **${maxSda}** (lebih baru). Gunakan data portal sebagai referensi utama.`;
+        if (comparison.status !== "comparable") {
+          rekomendasi = `⚠️ **${comparison.status === "incomparable" ? "Incomparable (Tidak Sepadan)" : "Kesepadanan Belum Dapat Dipastikan"}**: ${comparison.reason}`;
         } else {
-          rekomendasi = "✅ Kedua sumber memiliki data valid. Gunakan data BPS sebagai referensi standar statistik.";
+          const maxSda = sdaAnalysis?.observationEnd || "";
+          const maxBps = bpsAnalysis?.observationEnd || "";
+          rekomendasi = !maxSda || !maxBps ? "Tahun observasi belum cukup untuk menentukan sumber terbaru."
+            : maxBps > maxSda ? `BPS memiliki observasi lebih baru (${maxBps}); portal hingga ${maxSda}.`
+            : maxSda > maxBps ? `Satu Data Aceh memiliki observasi lebih baru (${maxSda}); BPS hingga ${maxBps}.`
+            : `Kedua sumber memiliki tahun observasi terbaru yang sama (${maxSda}).`;
+          rekomendasi += ` ${comparison.reason}`;
         }
-      } else if (bpsStatus === "valid") {
-        rekomendasi = "✅ Hanya **BPS** yang memiliki data valid. Gunakan data BPS.";
-      } else if (sdaStatus === "valid") {
-        rekomendasi = "✅ Hanya **Satu Data Aceh** yang memiliki data valid. Gunakan data portal.";
-      } else {
-        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini. Periksa ketersediaan dataset di portal atau periksa BPS API Key Anda.";
-      }
+      } else if (bpsStatus === "valid") rekomendasi = "Hanya BPS yang memiliki data yang berhasil dibaca; kesepadanan kedua sumber belum dapat dinilai.";
+      else if (sdaStatus === "valid") rekomendasi = "Hanya Satu Data Aceh yang memiliki data yang berhasil dibaca; kesepadanan kedua sumber belum dapat dinilai.";
+      else rekomendasi = "Kedua sumber belum menyediakan observasi yang dapat dibaca untuk indikator ini.";
 
       const kesimpulan = `---\n## Kesimpulan Perbandingan\n${rekomendasi}`;
-      return { content: [{ type: "text", text: bagian.join("\n\n---\n\n") + "\n\n" + kesimpulan }] };
+      return { content: [{ type: "text", text: bagian.join("\n\n---\n\n") + "\n\n" + kesimpulan }],
+        structuredContent: { comparability_status: sdaStatus === "valid" && bpsStatus === "valid" ? comparison.status : "unknown", reason: comparison.reason,
+          sources: { sda: { status: sdaStatus, observation_end: sdaAnalysis?.observationEnd || "", unit: sdaAnalysis?.unit || "" },
+            bps: { status: bpsStatus, observation_end: bpsAnalysis?.observationEnd || "", unit: bpsAnalysis?.unit || "" } } } };
     },
   );
 
@@ -895,7 +861,7 @@ export function createServer(env: Env): McpServer {
 }
 
 async function handleMcp(request: Request, env: Env): Promise<Response> {
-  const server = createServer(env);
+  const server = createServer(env, request.headers.get("CF-Connecting-IP") || "local");
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await server.connect(transport);
   return transport.handleRequest(request);
@@ -905,14 +871,13 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
-      return Response.json({ status: "ok", service: "satu-data-aceh-mcp-worker" });
+      return Response.json({ status: "ok", service: "satu-data-aceh-mcp-worker", catalog: catalogStatus(env) });
     }
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
-    if (!allowRequest(env)) return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
     try {
       return await handleMcp(request, env);
     } catch (error) {
-      console.error("MCP request failed", error);
+      console.error("MCP request failed");
       return Response.json({ error: "MCP request failed" }, { status: 500 });
     }
   },

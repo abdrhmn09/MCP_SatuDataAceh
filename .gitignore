@@ -4,6 +4,8 @@ venv/
 ENV/
 env/
 *.egg-info/
+build/
+dist/
 
 # Cache Python
 __pycache__/
@@ -28,3 +30,4 @@ Thumbs.db
 !.env.example
 .dev.vars
 .dev.vars.*
+!worker/.dev.vars.example

@@ -10,8 +10,12 @@ WORKDIR /app
 
 COPY pyproject.toml README.md requirements.txt ./
 COPY src ./src
+COPY data.json ./data.json
 
 RUN python -m pip install --no-cache-dir .
+
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
 
 EXPOSE 8000
 

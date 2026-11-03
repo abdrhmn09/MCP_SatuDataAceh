@@ -1,0 +1,87 @@
+{
+  "kemiskinan": [
+    "kemiskinan",
+    "miskin",
+    "garis kemiskinan",
+    "penduduk miskin"
+  ],
+  "miskin": [
+    "kemiskinan",
+    "miskin",
+    "penduduk miskin"
+  ],
+  "bps": [
+    "bps",
+    "badan pusat statistik",
+    "susenas"
+  ],
+  "pendidikan": [
+    "pendidikan",
+    "sekolah",
+    "guru",
+    "murid",
+    "siswa",
+    "lama sekolah"
+  ],
+  "ipm": [
+    "ipm",
+    "indeks pembangunan manusia",
+    "pembangunan manusia"
+  ],
+  "pengangguran": [
+    "pengangguran",
+    "tpt",
+    "tingkat pengangguran terbuka"
+  ],
+  "tpt": [
+    "tpt",
+    "tingkat pengangguran terbuka"
+  ],
+  "kesehatan": [
+    "kesehatan",
+    "stunting",
+    "gizi",
+    "puskesmas",
+    "rumah sakit"
+  ],
+  "ihk": [
+    "ihk",
+    "indeks harga konsumen",
+    "inflasi"
+  ],
+  "inflasi": [
+    "inflasi",
+    "ihk",
+    "indeks harga konsumen"
+  ],
+  "rls": [
+    "rls",
+    "rata-rata lama sekolah",
+    "rata rata lama sekolah"
+  ],
+  "hls": [
+    "hls",
+    "harapan lama sekolah"
+  ],
+  "uhh": [
+    "uhh",
+    "umur harapan hidup",
+    "angka harapan hidup"
+  ],
+  "pdrb": [
+    "pdrb",
+    "produk domestik regional bruto",
+    "pertumbuhan ekonomi"
+  ],
+  "padi": [
+    "padi"
+  ],
+  "sayur": [
+    "sayur",
+    "sayuran"
+  ],
+  "stunting": [
+    "stunting",
+    "prevalensi stunting"
+  ]
+}

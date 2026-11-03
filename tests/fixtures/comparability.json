@@ -1,0 +1,107 @@
+[
+  {
+    "title": "Persentase Penduduk Miskin Aceh Menurut Kabupaten/Kota",
+    "label": "Persentase Penduduk Miskin (P0) menurut Kabupaten/Kota",
+    "unit_a": "Persen",
+    "unit_b": "Persen",
+    "status": "comparable"
+  },
+  {
+    "title": "Garis Kemiskinan Aceh",
+    "label": "Persentase Penduduk Miskin",
+    "unit_a": "Rupiah/Kapita/Bulan",
+    "unit_b": "Persen",
+    "status": "incomparable"
+  },
+  {
+    "title": "Prevalensi Stunting",
+    "label": "Harapan Lama Sekolah",
+    "unit_a": "Persen",
+    "unit_b": "Tahun",
+    "status": "incomparable"
+  },
+  {
+    "title": "Jumlah Guru SMP",
+    "label": "Rata-rata Lama Sekolah",
+    "unit_a": "Orang",
+    "unit_b": "Tahun",
+    "status": "incomparable"
+  },
+  {
+    "title": "Indeks Pembangunan Manusia Nasional",
+    "label": "Indeks Pembangunan Manusia Aceh",
+    "unit_a": "Poin",
+    "unit_b": "Poin",
+    "status": "incomparable"
+  },
+  {
+    "title": "IPM menurut jenis kelamin",
+    "label": "IPM",
+    "unit_a": "Poin",
+    "unit_b": "Poin",
+    "status": "incomparable"
+  },
+  {
+    "title": "Kontribusi Sektor Perikanan Terhadap PDRB",
+    "label": "Laju Pertumbuhan PDRB Tahunan ADHK",
+    "unit_a": "Persen",
+    "unit_b": "Persen",
+    "status": "incomparable"
+  },
+  {
+    "title": "PDRB Per Kapita",
+    "label": "PDRB Per Kapita Tahunan",
+    "unit_a": "Juta Rupiah",
+    "unit_b": "Ribu Rupiah",
+    "status": "incomparable"
+  },
+  {
+    "title": "Produksi Padi",
+    "label": "Produksi Padi",
+    "unit_a": "Ton GKG",
+    "unit_b": "Kuintal",
+    "status": "incomparable"
+  },
+  {
+    "title": "Jumlah Penduduk",
+    "label": "Jumlah Penduduk",
+    "unit_a": "Ribu Jiwa",
+    "unit_b": "Jiwa",
+    "status": "incomparable"
+  },
+  {
+    "title": "Produksi Padi",
+    "label": "Produksi Padi",
+    "unit_a": "Hektare",
+    "unit_b": "Orang",
+    "status": "incomparable"
+  },
+  {
+    "title": "IPM Aceh",
+    "label": "IPM Aceh",
+    "unit_a": "",
+    "unit_b": "",
+    "status": "unknown"
+  },
+  {
+    "title": "Jumlah Penduduk Aceh",
+    "label": "Jumlah Penduduk Miskin Aceh",
+    "unit_a": "Jiwa",
+    "unit_b": "Jiwa",
+    "status": "incomparable"
+  },
+  {
+    "title": "PDRB Atas Dasar Harga Berlaku",
+    "label": "PDRB Atas Dasar Harga Konstan",
+    "unit_a": "Juta Rupiah",
+    "unit_b": "Juta Rupiah",
+    "status": "incomparable"
+  },
+  {
+    "title": "PDRB Per Kapita",
+    "label": "PDRB Total",
+    "unit_a": "Juta Rupiah",
+    "unit_b": "Juta Rupiah",
+    "status": "incomparable"
+  }
+]

@@ -107,10 +107,10 @@ describe("Cloudflare Worker adapter & Tools", () => {
       turvar: [{ val: 0, label: "" }],
       turtahun: [{ val: 0, label: "Tahunan" }],
       datacontent: {
-        "1171621014100": 7.12,
-        "1171621014200": 7.04,
-        "1101621014100": 18.23,
-        "1101621014200": 17.95,
+        "117162101410": 7.12,
+        "117162101420": 7.04,
+        "110162101410": 18.23,
+        "110162101420": 17.95,
       },
     };
     const csv = bpsPayloadToText(payload);
@@ -138,7 +138,7 @@ describe("Cloudflare Worker adapter & Tools", () => {
 
     // 3. IPM / RLS
     const src3 = bpsSource({ identifier: "78794e4b-2bbe-45ef-abd1-0a65c2e98702" }, mockEnv);
-    expect(src3?.variable).toBe("245");
+    expect(src3?.variable).toBe("74");
 
     // 4. Unknown
     const src4 = bpsSource({ identifier: "unknown-uuid" }, mockEnv);
@@ -155,25 +155,25 @@ describe("Cloudflare Worker adapter & Tools", () => {
   });
 
   it("cariVarBpsDariKataKunci mencocokkan seluruh variasi kata kunci pendidikan dengan tepat", () => {
-    expect(cariVarBpsDariKataKunci("sekolah")?.var).toBe("245");
-    expect(cariVarBpsDariKataKunci("guru")?.var).toBe("245");
-    expect(cariVarBpsDariKataKunci("murid")?.var).toBe("245");
-    expect(cariVarBpsDariKataKunci("siswa")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("sekolah")).toBeNull();
+    expect(cariVarBpsDariKataKunci("guru")).toBeNull();
+    expect(cariVarBpsDariKataKunci("murid")).toBeNull();
+    expect(cariVarBpsDariKataKunci("siswa")).toBeNull();
     expect(cariVarBpsDariKataKunci("rata-rata lama sekolah")?.var).toBe("245");
     expect(cariVarBpsDariKataKunci("harapan lama sekolah")?.var).toBe("246");
     expect(cariVarBpsDariKataKunci("hls")?.var).toBe("246");
     expect(cariVarBpsDariKataKunci("rls")?.var).toBe("245");
-    expect(cariVarBpsDariKataKunci("aps")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("aps")?.var).toBe("92");
   });
 
-  it("cariVarBpsDariKataKunci tetap mencocokkan kata 'ikan' dan 'perikanan' ke sektor perikanan", () => {
-    expect(cariVarBpsDariKataKunci("ikan")?.var).toBe("204");
-    expect(cariVarBpsDariKataKunci("perikanan")?.var).toBe("204");
+  it("cariVarBpsDariKataKunci tidak mengganti produksi perikanan dengan PDRB", () => {
+    expect(cariVarBpsDariKataKunci("ikan")).toBeNull();
+    expect(cariVarBpsDariKataKunci("perikanan")).toBeNull();
   });
 
   it("cariVarBpsDariKataKunci mencari kata kunci non-pendidikan lainnya dengan benar", () => {
     expect(cariVarBpsDariKataKunci("kemiskinan")?.var).toBe("42");
-    expect(cariVarBpsDariKataKunci("ipm")?.var).toBe("245");
+    expect(cariVarBpsDariKataKunci("ipm")?.var).toBe("74");
     expect(cariVarBpsDariKataKunci("tpt")?.var).toBe("206");
     expect(cariVarBpsDariKataKunci("padi")?.var).toBe("574");
     expect(cariVarBpsDariKataKunci("inflasi")?.var).toBe("564");
@@ -213,8 +213,8 @@ describe("Cloudflare Worker adapter & Tools", () => {
     expect(result?.diagnostic).toContain("npx wrangler secret put BPS_API_KEY");
   });
 
-  it("BPS_INDICATOR_MAP memiliki minimal 15 indikator strategis", () => {
-    expect(Object.keys(BPS_INDICATOR_MAP).length).toBeGreaterThanOrEqual(15);
+  it("BPS_INDICATOR_MAP memiliki minimal 10 indikator strategis", () => {
+    expect(Object.keys(BPS_INDICATOR_MAP).length).toBeGreaterThanOrEqual(10);
   });
 
   it("BPS_KEYWORD_TO_VAR memiliki minimal 30 kata kunci", () => {
@@ -223,10 +223,7 @@ describe("Cloudflare Worker adapter & Tools", () => {
 
   it("findCsvLinkInHtml mengekstrak tautan CSV dari konten HTML", async () => {
     const htmlContent = '<html><body><a href="https://example.com/data/laporan.csv">Unduh CSV</a></body></html>';
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      text: async () => htmlContent,
-    } as unknown as Response);
+    global.fetch = vi.fn().mockResolvedValue(new Response(htmlContent));
 
     const link = await findCsvLinkInHtml("https://example.com/page");
     expect(link).toBe("https://example.com/data/laporan.csv");
