@@ -47,9 +47,17 @@ it("MCP HTTP uses each visitor's header without changing the operator environmen
  const {Client}=await import('@modelcontextprotocol/sdk/client/index.js');
  const {StreamableHTTPClientTransport}=await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
  const urls:string[]=[];
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>{urls.push(url); return new Response('{"status":"OK","data":[{"domain_id":"1100"}]}');}));
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init:RequestInit)=>{
+  if(url.includes('/internal/accounts/resolve')) {
+    const auth=new Headers(init.headers).get('Authorization')||'';
+    const one=auth.includes('visitor-one');
+    return Response.json({id:one?'alice':'bob',bps:one?'alice-bps-key':'bob-bps-key',sdgs:''});
+  }
+  urls.push(url); return new Response('{"status":"OK","data":[{"domain_id":"1100"}]}');
+ }));
  const env:Env={CATALOG_URL:'https://example.com',DATA_YEAR:'2025',CATALOG_TTL_SECONDS:'60',MAX_REQUESTS_PER_MINUTE:'60',BPS_API_KEY:'operator-key'};
- for(const key of ['visitor-one-key','visitor-two-key']) {
+ env.ACCOUNTS_SERVICE_URL='https://accounts.example.com';env.ACCOUNTS_SERVICE_SECRET='test-shared-secret-for-account-resolver';
+ for(const key of ['mcp_visitor-one-token','mcp_visitor-two-token']) {
   const client=new Client({name:'credential-test',version:'1'});
   const transport=new StreamableHTTPClientTransport(new URL('https://example.com/mcp'),{
    requestInit:{headers:{Authorization:`Bearer ${key}`}},
@@ -63,6 +71,6 @@ it("MCP HTTP uses each visitor's header without changing the operator environmen
    expect(JSON.stringify(result)).not.toContain(key);
   } finally {await client.close();}
  }
- expect(urls[0]).toContain('visitor-one-key');expect(urls[1]).toContain('visitor-two-key');
+ expect(urls[0]).toContain('alice-bps-key');expect(urls[1]).toContain('bob-bps-key');
  expect(env.BPS_API_KEY).toBe('operator-key');
 });

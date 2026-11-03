@@ -31,3 +31,9 @@ Thumbs.db
 .dev.vars
 .dev.vars.*
 !worker/.dev.vars.example
+
+# Account database and backups
+var/
+*.sqlite3
+*.sqlite3-*
+*.db

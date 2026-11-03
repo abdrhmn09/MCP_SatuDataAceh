@@ -1,4 +1,5 @@
-import { credential, endpointCatalog, executeBps, operations } from "./bps-api";
+import { proxyAccount, resolveAccount } from "./accounts";
+import { endpointCatalog, executeBps } from "./bps-api";
 import searchSynonyms from "../../src/search_rules.json";
 import { isPublicHttpsUrl, readPublicText, redactSecrets } from "./http";
 import { parseCsv, encodeCsv, observationMetadata } from "./csv";
@@ -17,6 +18,8 @@ import {
 export { bpsPayloadToText, parseBpsDiagnostics, cariVarBpsDariKataKunci } from "./bps";
 
 export interface Env {
+  ACCOUNTS_SERVICE_URL?: string;
+  ACCOUNTS_SERVICE_SECRET?: string;
   ASSETS?: { fetch(request: Request): Promise<Response> };
   CATALOG_URL: string;
   DATA_YEAR: string;
@@ -893,10 +896,10 @@ export function createServer(env: Env, clientKey = "local"): McpServer {
 }
 
 async function handleMcp(request: Request, env: Env): Promise<Response> {
-  const scopedEnv = { ...env };
-  if (request.headers.has("X-BPS-API-Key") || request.headers.has("Authorization")) scopedEnv.BPS_API_KEY = credential(request.headers);
-  if (request.headers.has("X-BPS-SDGS-Token")) scopedEnv.BPS_SDGS_TOKEN = credential(request.headers, "", "sdgs");
-  const server = createServer(scopedEnv, request.headers.get("CF-Connecting-IP") || "local");
+  const user = await resolveAccount(request, env);
+  if (!user) return Response.json({ error: "unauthorized", message: "Gunakan token MCP dari dashboard akun." }, { status: 401, headers: { "WWW-Authenticate": 'Bearer realm="MCP Satu Data Aceh"' } });
+  const scopedEnv = { ...env, BPS_API_KEY: user.bps, BPS_SDGS_TOKEN: user.sdgs };
+  const server = createServer(scopedEnv, user.id);
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await server.connect(transport);
   return transport.handleRequest(request);
@@ -907,6 +910,10 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/health" && request.method === "GET") {
       return Response.json({ status: "ok", service: "satu-data-aceh-mcp-worker", catalog: catalogStatus(env) });
+    }
+    if (url.pathname.startsWith("/api/account/")) {
+      try { return await proxyAccount(request, env); }
+      catch { return Response.json({ error: "account_service_unavailable" }, { status: 503 }); }
     }
     if (url.pathname === "/api/bps/endpoints" && request.method === "GET") {
       try { return Response.json(endpointCatalog(url.searchParams.get("operation") || "", url.searchParams.get("query") || ""), { headers: { "Cache-Control": "no-store" } }); }
@@ -922,7 +929,11 @@ export default {
         try { while (true) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.byteLength; if (size > 16_384) throw new Error("Body terlalu besar."); text += decoder.decode(chunk.value, { stream: true }); } text += decoder.decode(); }
         finally { await reader.cancel(); }
         const body = JSON.parse(text);
-        return Response.json(await executeBps(body.operation, body.parameters || {}, request.headers), { headers: { "Cache-Control": "no-store" } });
+        const user = await resolveAccount(request, env, "session");
+        if (!user) return Response.json({ error: "login_required" }, { status: 401 });
+        const headers = new Headers();
+        if (user.sdgs) headers.set('X-BPS-SDGS-Token',user.sdgs);
+        return Response.json(await executeBps(body.operation, body.parameters || {}, headers, user.bps), { headers: { "Cache-Control": "no-store" } });
       } catch { return Response.json({ ok: false, message: "Permintaan atau credential tidak valid." }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
     }
     if (request.method === "GET" && !url.pathname.startsWith("/mcp") && env.ASSETS) return env.ASSETS.fetch(request);
@@ -931,7 +942,7 @@ export default {
       return await handleMcp(request, env);
     } catch (error) {
       console.error("MCP request failed");
-      return Response.json({ error: "MCP request failed" }, { status: 500 });
+      return Response.json({ error: "account_service_unavailable" }, { status: 503 });
     }
   },
 };

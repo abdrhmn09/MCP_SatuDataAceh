@@ -1,0 +1,17 @@
+services:
+  mcp:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    environment:
+      MCP_TRANSPORT: sse
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8000"
+      ACCOUNTS_DB_PATH: /app/var/accounts.sqlite3
+    volumes:
+      - account-data:/app/var
+volumes:
+  account-data:

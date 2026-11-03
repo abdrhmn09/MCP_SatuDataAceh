@@ -2,8 +2,12 @@ services:
   - type: web
     name: satu-data-aceh-mcp
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /health
+    disk:
+      name: account-data
+      mountPath: /app/var
+      sizeGB: 1
     envVars:
       - key: MCP_TRANSPORT
         value: sse
@@ -15,3 +19,23 @@ services:
         value: satu-data-aceh-mcp.onrender.com,www.mcpsatudataaceh.web.id,mcpsatudataaceh.web.id
       - key: MCP_ALLOWED_ORIGINS
         value: https://satu-data-aceh-mcp.onrender.com,https://www.mcpsatudataaceh.web.id,https://mcpsatudataaceh.web.id,https://mcpplaygroundonline.com
+      - key: ACCOUNTS_ENCRYPTION_KEY
+        sync: false
+      - key: ACCOUNTS_DB_PATH
+        value: /app/var/accounts.sqlite3
+      - key: ACCOUNTS_PUBLIC_ORIGIN
+        value: https://www.mcpsatudataaceh.web.id
+      - key: ACCOUNTS_ALLOWED_ORIGINS
+        value: https://mcpsatudataaceh.web.id
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_DAILY_LIMIT
+        value: "100"

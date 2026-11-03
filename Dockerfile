@@ -15,6 +15,7 @@ COPY data.json ./data.json
 RUN python -m pip install --no-cache-dir .
 
 RUN useradd --create-home --uid 10001 appuser
+RUN mkdir -p /app/var && chown appuser:appuser /app/var
 USER appuser
 
 EXPOSE 8000

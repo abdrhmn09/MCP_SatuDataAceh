@@ -75,9 +75,10 @@ except ImportError:
     from cache import muat_katalog, catalog_status
 
 try:
-    from . import bps_api
+    from . import bps_api, accounts
 except ImportError:
     import bps_api
+    import accounts
 
 
 def _request_headers():
@@ -87,7 +88,25 @@ def _request_headers():
         return {}
 
 
+def _account_key(service='bps'):
+    user = accounts.principal.get()
+    if user:
+        vault = accounts.get_vault()
+        if not vault.identity(user['raw'],user['kind']):
+            raise ValueError('Sesi atau token telah dicabut.')
+        key = vault.get_key(user['id'],service)
+        if service == 'sdgs' and not key:
+            key = vault.get_key(user['id'],'bps')
+        if not key:
+            raise ValueError('Simpan API key BPS di dashboard akun terlebih dahulu.')
+        return key
+    return None
+
+
 def _bps_api_key():
+    stored = _account_key()
+    if stored is not None:
+        return stored
     headers = _request_headers()
     if any(name in headers for name in ("x-bps-api-key", "authorization")):
         return bps_api.credential(headers)
@@ -168,6 +187,8 @@ class _RateLimiter:
 
 def _request_client_key() -> str:
     """Use the transport peer; proxy headers require trust configured by the host."""
+    if accounts.principal.get():
+        return accounts.principal.get()["id"]
     try:
         request = mcp.get_context().request_context.request
         if request and request.client:
@@ -199,6 +220,7 @@ try:
         host=_MCP_HOST,
         port=_MCP_PORT,
         transport_security=_transport_security,
+        stateless_http=True,
     )
 except TypeError:
     # mcp>=2 MCPServer tidak menerima host/port di constructor
@@ -923,7 +945,9 @@ async def health(_: Request) -> JSONResponse:
 async def _execute_bps(operation: str, parameters: dict, headers) -> dict:
     if operation not in bps_api.OPERATIONS:
         raise ValueError("Operasi tidak dikenal; gunakan bps_endpoints.")
-    key = bps_api.credential(headers, BPS_API_KEY, bps_api.OPERATIONS[operation]["credential"])
+    key = _account_key(bps_api.OPERATIONS[operation]["credential"])
+    if key is None:
+        key = bps_api.credential(headers, BPS_API_KEY, bps_api.OPERATIONS[operation]["credential"])
     url, public_url, upstream_headers = bps_api.build_request(operation, parameters, key)
     try:
         payload = await _read_bps_payload(url, upstream_headers)
@@ -977,7 +1001,7 @@ async def bps_endpoint_catalog(request: Request):
 
 @mcp.custom_route("/api/bps", methods=["POST"], include_in_schema=False)
 async def bps_browser_request(request: Request):
-    if not await _rate_limiter.allow(request.client.host if request.client else "local"):
+    if not await _rate_limiter.allow(accounts.principal.get()["id"] if accounts.principal.get() else request.client.host if request.client else "local"):
         return JSONResponse({"error": "rate_limited"}, status_code=429)
     try:
         raw = bytearray()
@@ -989,7 +1013,8 @@ async def bps_browser_request(request: Request):
         if not isinstance(body, dict) or not isinstance(body.get("operation"), str):
             raise ValueError("operation wajib diisi.")
         # Browser requests must supply their own credentials; never use operator's key.
-        bps_api.credential(request.headers, service=bps_api.OPERATIONS.get(body["operation"], {}).get("credential", "bps"))
+        if not accounts.principal.get():
+            bps_api.credential(request.headers, service=bps_api.OPERATIONS.get(body["operation"], {}).get("credential", "bps"))
         result = await _execute_bps(body["operation"], body.get("parameters", {}), request.headers)
         return JSONResponse(result, headers={"Cache-Control": "no-store"})
     except (ValueError, TypeError) as error:
@@ -1480,10 +1505,20 @@ def main() -> None:
     if transport == "stdio":
         mcp.run(transport=transport)
     else:
+        # Accounts are enforced at the ASGI boundary, including SSE message POSTs.
+        import uvicorn
+        try:
+            from .accounts_http import install
+        except ImportError:
+            from accounts_http import install
+        accounts.get_vault()  # Fail closed before binding if the master key is absent/wrong.
+        if os.getenv('ACCOUNTS_DEV_HTTP') == '1' and _MCP_HOST not in {'127.0.0.1','localhost','::1'}:
+            raise ValueError('ACCOUNTS_DEV_HTTP hanya boleh digunakan pada loopback.')
         if _security_at_runtime:
-            mcp.run(transport=transport, host=_MCP_HOST, port=_MCP_PORT, transport_security=_transport_security)
+            app = (mcp.sse_app if transport == 'sse' else mcp.streamable_http_app)(host=_MCP_HOST, transport_security=_transport_security, **({'stateless_http': True} if transport != 'sse' else {}))
         else:
-            mcp.run(transport=transport)
+            app = (mcp.sse_app if transport == 'sse' else mcp.streamable_http_app)()
+        uvicorn.run(install(app),host=_MCP_HOST,port=_MCP_PORT)
 
 
 if __name__ == "__main__":
