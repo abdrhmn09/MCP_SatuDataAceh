@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="id" class="dark scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Satu Data Aceh — Model Context Protocol untuk Data Publik & Statistik Aceh</title>
+  <meta name="description" content="Server Model Context Protocol (MCP) resmi yang menghubungkan AI (Claude, Cursor, ChatGPT) dengan Portal Satu Data Aceh dan BPS Provinsi Aceh.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏛️</text></svg>">
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              900: '#064e3b',
+            },
+            dark: {
+              base: '#0b0f19',
+              card: '#111827',
+              border: '#1f293d',
+              muted: '#94a3b8'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    .glass {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glow-emerald {
+      box-shadow: 0 0 50px -10px rgba(16, 185, 129, 0.15);
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 font-sans antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- Background decorative glows -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[450px] bg-brand-500/10 rounded-full blur-[130px]"></div>
+    <div class="absolute top-[40%] right-[-10%] w-[500px] h-[400px] bg-cyan-500/10 rounded-full blur-[140px]"></div>
+  </div>
+
+  <div class="relative z-10 flex flex-col min-h-screen">
+    <!-- Navbar -->
+    <header class="sticky top-0 z-50 glass border-b border-dark-border">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+            <i data-lucide="database" class="w-5 h-5 text-white"></i>
+          </div>
+          <div>
+            <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">MCP Satu Data Aceh</span>
+            <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">v0.2.0</span>
+          </div>
+        </div>
+
+        <nav class="hidden md:flex items-center gap-6 text-sm text-slate-400 font-medium">
+          <a href="#fitur" class="hover:text-white transition">Fitur Utama</a>
+          <a href="#tools" class="hover:text-white transition">Tools MCP</a>
+          <a href="#instalasi" class="hover:text-white transition">Panduan Integrasi</a>
+          <a href="#arsitektur" class="hover:text-white transition">Arsitektur</a>
+        </nav>
+
+        <div class="flex items-center gap-3">
+          <div id="healthBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800/80 border border-slate-700/60 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" id="healthDot"></span>
+            <span id="healthText">Memeriksa status...</span>
+          </div>
+          <a href="https://github.com/abdrhmn09/MCP_SatuDataAceh" target="_blank" rel="noreferrer" class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition" title="GitHub Repository">
+            <i data-lucide="github" class="w-5 h-5"></i>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-grow">
+      <!-- Hero Section -->
+      <section class="pt-20 pb-16 lg:pt-28 lg:pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/25 text-brand-400 text-xs font-semibold mb-8 animate-fade-in">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>Model Context Protocol (MCP) untuk Open Data Serambi Mekkah</span>
+        </div>
+
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-tight sm:leading-none">
+          Hubungkan AI Anda ke <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">Portal Satu Data Aceh</span>
+        </h1>
+
+        <p class="mt-6 text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto font-normal leading-relaxed">
+          Server MCP yang memungkinkan asisten AI (<strong class="text-slate-200">Claude, Cursor, ChatGPT</strong>) mencari, membaca CSV numerik, dan membandingkan data portal daerah dengan data resmi BPS secara real-time.
+        </p>
+
+        <!-- Quick Copy Endpoint Card -->
+        <div class="mt-10 max-w-2xl mx-auto glass rounded-2xl p-3 border border-dark-border glow-emerald">
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#0d1322] rounded-xl px-4 py-3 border border-slate-800">
+            <div class="flex items-center gap-3 overflow-hidden w-full sm:w-auto">
+              <span class="px-2 py-0.5 rounded bg-brand-500/20 text-brand-400 font-mono text-xs font-semibold uppercase">SSE URL</span>
+              <code id="endpointUrl" class="font-mono text-xs sm:text-sm text-emerald-300 truncate">https://www.mcpsatudataaceh.web.id/sse</code>
+            </div>
+            <button onclick="copyToClipboard('https://www.mcpsatudataaceh.web.id/sse', this)" class="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold transition active:scale-95 shadow-md shadow-brand-500/20">
+              <i data-lucide="copy" class="w-4 h-4"></i>
+              <span>Salin Endpoint</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-4 flex items-center justify-center gap-6 text-xs text-slate-500">
+          <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-brand-400"></i> Siap Pakai di Claude Desktop</span>
+          <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-brand-400"></i> Cursor & Copilot</span>
+          <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-4 h-4 text-brand-400"></i> Gratis & Open Source</span>
+        </div>
+      </section>
+
+      <!-- Highlights / Bento Grid -->
+      <section id="fitur" class="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-14">
+          <h2 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Dirancang untuk Riset Statistik yang Akurat</h2>
+          <p class="mt-2 text-slate-400 text-sm max-w-xl mx-auto">Menjawab kelemahan halusinasi AI dengan menghubungkan langsung ke data tabel asli pemerintah.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div class="glass p-6 rounded-2xl border border-dark-border hover:border-brand-500/40 transition group">
+            <div class="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-400 flex items-center justify-center mb-5 group-hover:scale-105 transition">
+              <i data-lucide="folder-search" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-white mb-2">4.000+ Dataset</h3>
+            <p class="text-sm text-slate-400 leading-relaxed">Menjangkau katalog lengkap DCAT Portal Satu Data Aceh dari puluhan dinas, instansi, dan badan daerah.</p>
+          </div>
+
+          <div class="glass p-6 rounded-2xl border border-dark-border hover:border-brand-500/40 transition group">
+            <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mb-5 group-hover:scale-105 transition">
+              <i data-lucide="landmark" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-white mb-2">BPS Domain 1100</h3>
+            <p class="text-sm text-slate-400 leading-relaxed">Terhubung langsung ke Web API BPS Provinsi Aceh untuk memverifikasi angka statistik makro rilis termutakhir.</p>
+          </div>
+
+          <div class="glass p-6 rounded-2xl border border-dark-border hover:border-brand-500/40 transition group">
+            <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-5 group-hover:scale-105 transition">
+              <i data-lucide="calendar-range" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-white mb-2">Multi-Year Observation</h3>
+            <p class="text-sm text-slate-400 leading-relaxed">Dukungan penuh pengambilan seluruh deret waktu historis (contoh: 2006–2024 utuh tanpa pemotongan tahun).</p>
+          </div>
+
+          <div class="glass p-6 rounded-2xl border border-dark-border hover:border-brand-500/40 transition group">
+            <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-5 group-hover:scale-105 transition">
+              <i data-lucide="scale" class="w-6 h-6"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-white mb-2">Smart Comparability</h3>
+            <p class="text-sm text-slate-400 leading-relaxed">Mendeteksi kesepadanan wilayah dan metodologi secara cerdas guna menghindari perbandingan yang bias.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- MCP Tools Section -->
+      <section id="tools" class="py-16 bg-slate-900/40 border-y border-dark-border">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="text-center mb-12">
+            <span class="text-xs font-semibold uppercase tracking-wider text-brand-400">Antarmuka Alat</span>
+            <h2 class="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">5 Tool Utama yang Tersedia</h2>
+            <p class="mt-2 text-slate-400 text-sm max-w-xl mx-auto">Setiap tool memiliki protokol komunikasi terstandar yang dipahami secara native oleh model LLM.</p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Tool 1: search -->
+            <div class="glass p-6 rounded-2xl border border-dark-border">
+              <div class="flex items-center justify-between mb-4">
+                <span class="px-2.5 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 font-mono text-xs font-bold">search</span>
+                <span class="text-xs text-slate-500">Pencarian Terstruktur</span>
+              </div>
+              <h3 class="text-base font-semibold text-white mb-2">Mencari Dataset Terkurasi</h3>
+              <p class="text-xs text-slate-400 mb-4 leading-relaxed">Mencari katalog dengan pembobotan relevansi indikator lokal Aceh dan menekan noise dokumen internal/SOP.</p>
+              <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-slate-300">
+                <span class="text-slate-500">// Parameter</span><br>
+                query: <span class="text-emerald-400">"kemiskinan"</span>
+              </div>
+            </div>
+
+            <!-- Tool 2: fetch -->
+            <div class="glass p-6 rounded-2xl border border-dark-border">
+              <div class="flex items-center justify-between mb-4">
+                <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-xs font-bold">fetch</span>
+                <span class="text-xs text-slate-500">Inspeksi Spesifik</span>
+              </div>
+              <h3 class="text-base font-semibold text-white mb-2">Mengambil Isi & Metadata</h3>
+              <p class="text-xs text-slate-400 mb-4 leading-relaxed">Mengekstrak rentang tahun observasi aktual, mendeteksi kolom indikator numerik, dan mengidentifikasi satuan data.</p>
+              <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-slate-300">
+                <span class="text-slate-500">// Parameter</span><br>
+                id: <span class="text-emerald-400">"5832d12b-52b2-..."</span>
+              </div>
+            </div>
+
+            <!-- Tool 3: cari_katalog_data -->
+            <div class="glass p-6 rounded-2xl border border-dark-border">
+              <div class="flex items-center justify-between mb-4">
+                <span class="px-2.5 py-1 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 font-mono text-xs font-bold">cari_katalog_data</span>
+                <span class="text-xs text-slate-500">Format Naratif</span>
+              </div>
+              <h3 class="text-base font-semibold text-white mb-2">Katalog & Tautan Langsung</h3>
+              <p class="text-xs text-slate-400 mb-4 leading-relaxed">Mengembalikan daftar dataset lengkap beserta nama instansi penerbit dan tautan unduhan langsung file CSV.</p>
+              <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-slate-300">
+                <span class="text-slate-500">// Parameter</span><br>
+                kata_kunci: <span class="text-emerald-400">"penduduk"</span>
+              </div>
+            </div>
+
+            <!-- Tool 4: baca_isi_csv -->
+            <div class="glass p-6 rounded-2xl border border-dark-border">
+              <div class="flex items-center justify-between mb-4">
+                <span class="px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono text-xs font-bold">baca_isi_csv</span>
+                <span class="text-xs text-slate-500">Analisis Numerik</span>
+              </div>
+              <h3 class="text-base font-semibold text-white mb-2">Membaca Tabel CSV</h3>
+              <p class="text-xs text-slate-400 mb-4 leading-relaxed">Mengubah file CSV publik menjadi tabel Markdown yang rapi, lengkap dengan peringatan jika file hanya berisi header.</p>
+              <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-slate-300">
+                <span class="text-slate-500">// Parameter</span><br>
+                url: <span class="text-emerald-400">"https://.../data.csv"</span><br>
+                baris_maksimal: <span class="text-amber-300">20</span>
+              </div>
+            </div>
+
+            <!-- Tool 5: bandingkan_data (Featured) -->
+            <div class="glass p-6 rounded-2xl border border-brand-500/30 lg:col-span-2 relative overflow-hidden">
+              <div class="absolute top-0 right-0 px-3 py-1 bg-brand-500/20 text-brand-300 text-[11px] font-semibold rounded-bl-xl border-l border-b border-brand-500/30">
+                Fitur Unggulan Riset
+              </div>
+              <div class="flex items-center gap-3 mb-4">
+                <span class="px-2.5 py-1 rounded-md bg-brand-500/10 border border-brand-500/30 text-brand-400 font-mono text-xs font-bold">bandingkan_data</span>
+                <span class="text-xs text-slate-400 font-medium">Validasi Silang SDA vs BPS</span>
+              </div>
+              <h3 class="text-lg font-semibold text-white mb-2">Komparasi Otomatis & Cek Kesepadanan Metodologis</h3>
+              <p class="text-xs sm:text-sm text-slate-400 mb-4 leading-relaxed">
+                Menarik data dari Portal Satu Data Aceh dan BPS Web API sekaligus. Memverifikasi apakah indikator sepadan (tidak mencampuradukkan data agregat dengan disagregasi gender), lalu menyimpulkan angka rilis termutakhir beserta sumber referensinya.
+              </p>
+              <div class="bg-black/50 rounded-lg p-3 font-mono text-xs text-slate-300 border border-slate-800">
+                <span class="text-slate-500">// Contoh pemanggilan AI</span><br>
+                bandingkan_data(indikator: <span class="text-emerald-400">"IPM"</span>) &rarr; <span class="text-slate-400">Membandingkan BPS Var 74 (2024) vs SDA (2010–2023)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Quick Integration Guide (Tabs) -->
+      <section id="instalasi" class="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+          <span class="text-xs font-semibold uppercase tracking-wider text-brand-400">Panduan Pemasangan</span>
+          <h2 class="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">Gunakan dalam 1 Menit</h2>
+          <p class="mt-2 text-slate-400 text-sm max-w-xl mx-auto">Pilih klien AI favorit Anda dan salin konfigurasi yang telah disediakan.</p>
+        </div>
+
+        <div class="max-w-3xl mx-auto glass rounded-2xl border border-dark-border overflow-hidden">
+          <!-- Client Tabs Header -->
+          <div class="flex border-b border-dark-border bg-slate-900/60 overflow-x-auto text-xs sm:text-sm font-medium">
+            <button onclick="switchTab('claude')" id="tab-claude" class="tab-btn px-5 py-3.5 text-brand-400 border-b-2 border-brand-500 bg-brand-500/5 transition whitespace-nowrap">Claude Desktop</button>
+            <button onclick="switchTab('cursor')" id="tab-cursor" class="tab-btn px-5 py-3.5 text-slate-400 hover:text-slate-200 transition whitespace-nowrap">Cursor IDE</button>
+            <button onclick="switchTab('chatgpt')" id="tab-chatgpt" class="tab-btn px-5 py-3.5 text-slate-400 hover:text-slate-200 transition whitespace-nowrap">ChatGPT</button>
+            <button onclick="switchTab('vscode')" id="tab-vscode" class="tab-btn px-5 py-3.5 text-slate-400 hover:text-slate-200 transition whitespace-nowrap">VS Code / Copilot</button>
+          </div>
+
+          <!-- Tab Contents -->
+          <div class="p-6">
+            <!-- Claude Desktop Content -->
+            <div id="content-claude" class="tab-content">
+              <div class="flex items-center justify-between mb-3 text-xs text-slate-400">
+                <span>Tambahkan ke file <code class="text-emerald-400">claude_desktop_config.json</code>:</span>
+                <button onclick="copySnippet('snippet-claude', this)" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition text-xs">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>Salin JSON</span>
+                </button>
+              </div>
+              <pre class="bg-black/60 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-200 overflow-x-auto border border-slate-800" id="snippet-claude">{
+  "mcpServers": {
+    "satu-data-aceh": {
+      "url": "https://www.mcpsatudataaceh.web.id/sse"
+    }
+  }
+}</pre>
+            </div>
+
+            <!-- Cursor Content -->
+            <div id="content-cursor" class="tab-content hidden">
+              <div class="flex items-center justify-between mb-3 text-xs text-slate-400">
+                <span>Tambahkan pada <code class="text-emerald-400">.cursor/mcp.json</code> atau Settings &gt; MCP:</span>
+                <button onclick="copySnippet('snippet-cursor', this)" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition text-xs">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>Salin JSON</span>
+                </button>
+              </div>
+              <pre class="bg-black/60 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-200 overflow-x-auto border border-slate-800" id="snippet-cursor">{
+  "mcpServers": {
+    "satu-data-aceh": {
+      "url": "https://www.mcpsatudataaceh.web.id/sse"
+    }
+  }
+}</pre>
+            </div>
+
+            <!-- ChatGPT Content -->
+            <div id="content-chatgpt" class="tab-content hidden">
+              <p class="text-xs sm:text-sm text-slate-300 mb-3">Untuk akun ChatGPT yang memiliki fitur Developer Mode / Connectors:</p>
+              <ol class="list-decimal list-inside text-xs sm:text-sm text-slate-400 space-y-2 mb-4">
+                <li>Buka menu <strong class="text-slate-200">Settings</strong> &rarr; <strong class="text-slate-200">Connectors</strong> / <strong class="text-slate-200">MCP</strong>.</li>
+                <li>Klik tombol <strong class="text-slate-200">Add New MCP Server</strong>.</li>
+                <li>Pilih tipe transport <strong class="text-slate-200">Server-Sent Events (SSE)</strong>.</li>
+                <li>Masukkan Server URL di bawah ini:</li>
+              </ol>
+              <div class="flex items-center justify-between bg-black/60 rounded-xl px-4 py-3 border border-slate-800">
+                <code class="font-mono text-xs sm:text-sm text-emerald-400">https://www.mcpsatudataaceh.web.id/sse</code>
+                <button onclick="copyToClipboard('https://www.mcpsatudataaceh.web.id/sse', this)" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium">Salin</button>
+              </div>
+            </div>
+
+            <!-- VS Code Content -->
+            <div id="content-vscode" class="tab-content hidden">
+              <div class="flex items-center justify-between mb-3 text-xs text-slate-400">
+                <span>Konfigurasi via MCP Extension atau GitHub Copilot:</span>
+                <button onclick="copySnippet('snippet-vscode', this)" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 transition text-xs">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>Salin JSON</span>
+                </button>
+              </div>
+              <pre class="bg-black/60 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-200 overflow-x-auto border border-slate-800" id="snippet-vscode">{
+  "name": "satu-data-aceh",
+  "url": "https://www.mcpsatudataaceh.web.id/sse",
+  "type": "sse"
+}</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Architecture Section -->
+      <section id="arsitektur" class="py-16 bg-slate-900/30 border-t border-dark-border">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="text-center mb-12">
+            <span class="text-xs font-semibold uppercase tracking-wider text-brand-400">Arsitektur Terbuka</span>
+            <h2 class="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">Alur Data & Keamanan</h2>
+            <p class="mt-2 text-slate-400 text-sm max-w-xl mx-auto">Server berjalan secara read-only dan hanya mengonsumsi data publik tanpa meminta kredensial pengguna.</p>
+          </div>
+
+          <div class="max-w-4xl mx-auto glass rounded-2xl p-6 sm:p-8 border border-dark-border">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+              <div class="p-4 rounded-xl bg-slate-800/50 border border-slate-700/60">
+                <i data-lucide="bot" class="w-8 h-8 text-cyan-400 mx-auto mb-3"></i>
+                <h4 class="font-semibold text-white text-sm mb-1">AI Client</h4>
+                <p class="text-xs text-slate-400">Claude Desktop, Cursor, atau ChatGPT yang mengirim JSON-RPC via SSE.</p>
+              </div>
+              <div class="p-4 rounded-xl bg-brand-950/40 border border-brand-500/30 relative">
+                <div class="hidden md:block absolute -left-3 top-1/2 -translate-y-1/2 text-brand-400">&larr;</div>
+                <div class="hidden md:block absolute -right-3 top-1/2 -translate-y-1/2 text-brand-400">&rarr;</div>
+                <i data-lucide="cpu" class="w-8 h-8 text-brand-400 mx-auto mb-3"></i>
+                <h4 class="font-semibold text-white text-sm mb-1">MCP Gateway</h4>
+                <p class="text-xs text-slate-400">Nginx Reverse Proxy & FastMCP Python Server di VPS Linux Ubuntu.</p>
+              </div>
+              <div class="p-4 rounded-xl bg-slate-800/50 border border-slate-700/60">
+                <i data-lucide="server" class="w-8 h-8 text-emerald-400 mx-auto mb-3"></i>
+                <h4 class="font-semibold text-white text-sm mb-1">Data Provider</h4>
+                <p class="text-xs text-slate-400">Portal Resmi Satu Data Aceh (data.json) & Web API BPS Aceh (Domain 1100).</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-dark-border py-8 text-center text-xs text-slate-500 bg-[#090d16]">
+      <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <span>&copy; 2026 <strong>MCP Satu Data Aceh</strong>. Lisensi MIT.</span>
+        </div>
+        <div class="flex items-center gap-6">
+          <a href="https://satudata.acehprov.go.id" target="_blank" rel="noreferrer" class="hover:text-slate-300 transition">Portal Satu Data Aceh</a>
+          <a href="https://aceh.bps.go.id" target="_blank" rel="noreferrer" class="hover:text-slate-300 transition">BPS Provinsi Aceh</a>
+          <a href="https://github.com/abdrhmn09/MCP_SatuDataAceh" target="_blank" rel="noreferrer" class="hover:text-slate-300 transition">GitHub</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 px-4 py-2.5 rounded-xl bg-brand-600 text-white font-medium text-xs flex items-center gap-2 shadow-xl shadow-brand-500/20">
+    <i data-lucide="check" class="w-4 h-4"></i>
+    <span id="toastMsg">Tersalin ke clipboard!</span>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    // Check Live Health
+    async function checkHealth() {
+      const dot = document.getElementById('healthDot');
+      const text = document.getElementById('healthText');
+      try {
+        const res = await fetch('/health');
+        if (res.ok) {
+          dot.className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]";
+          text.innerText = "Server Online (5 Tools)";
+          text.className = "text-emerald-400 font-medium";
+        } else {
+          throw new Error('Not OK');
+        }
+      } catch (e) {
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]";
+        text.innerText = "MCP Ready";
+      }
+    }
+    checkHealth();
+
+    // Copy to clipboard helper
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Tautan SSE berhasil disalin!");
+      });
+    }
+
+    function copySnippet(id, btn) {
+      const text = document.getElementById(id).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Konfigurasi JSON berhasil disalin!");
+      });
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2500);
+    }
+
+    // Tabs Switcher
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('text-brand-400', 'border-b-2', 'border-brand-500', 'bg-brand-500/5');
+        btn.classList.add('text-slate-400');
+      });
+
+      document.getElementById('content-' + tabName).classList.remove('hidden');
+      const activeBtn = document.getElementById('tab-' + tabName);
+      activeBtn.classList.remove('text-slate-400');
+      activeBtn.classList.add('text-brand-400', 'border-b-2', 'border-brand-500', 'bg-brand-500/5');
+    }
+  </script>
+</body>
+</html>
