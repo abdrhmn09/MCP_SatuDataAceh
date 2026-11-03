@@ -30,7 +30,6 @@
 - `satu_data_aceh_mcp.egg-info`
 - `src`
 - `tests`
-- `worker`
 
 ## How Grok should work here
 1. Prefer **read_file / write_file** for source; avoid shell file hacks.

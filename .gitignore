@@ -30,10 +30,12 @@ Thumbs.db
 !.env.example
 .dev.vars
 .dev.vars.*
-!worker/.dev.vars.example
 
 # Account database and backups
 var/
 *.sqlite3
 *.sqlite3-*
 *.db
+
+# Repositori Worker mandiri di checkout lokal
+/MCP_SatuDataAceh_Worker/

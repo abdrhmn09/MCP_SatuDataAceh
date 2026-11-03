@@ -1,6 +1,0 @@
-# Copy to .dev.vars for local development only.
-# Production: wrangler secret put BPS_API_KEY
-BPS_API_KEY=
-# Canonical Python account service, must use HTTPS (not this Worker's own URL).
-ACCOUNTS_SERVICE_URL=https://www.mcpsatudataaceh.web.id
-ACCOUNTS_SERVICE_SECRET=

@@ -25,4 +25,4 @@ Periode BPS diambil dari metadata dengan batas permintaan agar tool tidak berjal
 
 ## Verifikasi
 
-Jalankan `python3 -m unittest discover -s tests -q`, `npm --prefix worker run typecheck`, dan `npm --prefix worker test`. Regresi laporan tersedia pada `tests/test_report_regressions.py` dan `worker/tests/report.test.ts`, termasuk unknown operation, schema batas baris, null/nonfinite, kesepadanan wilayah/periode, dan credential SDGs terpisah.
+Jalankan `python3 -m unittest discover -s tests -q` untuk proyek Python. Jalankan `npm run typecheck` dan `npm test` dari repositori Worker. Regresi laporan tersedia pada `tests/test_report_regressions.py` di proyek Python dan `tests/report.test.ts` di repositori Worker, termasuk unknown operation, schema batas baris, null/nonfinite, kesepadanan wilayah/periode, dan credential SDGs terpisah.

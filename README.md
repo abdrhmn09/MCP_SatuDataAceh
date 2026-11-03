@@ -25,6 +25,8 @@ OAuth Authorization Code + PKCE S256 tersedia melalui akun yang sama. API key BP
 
 ## Menghubungkan ChatGPT Web dan klien OAuth
 
+Lihat [panduan pemasangan MCP](docs/panduan-pemasangan-mcp.md) untuk langkah per aplikasi, konfigurasi lokal, dan uji koneksi.
+
 1. Pastikan `MCP_TRANSPORT=both` dan `ACCOUNTS_PUBLIC_ORIGIN` memakai satu origin HTTPS utama, misalnya `https://www.mcpsatudataaceh.web.id`.
 2. Pada pengaturan MCP/custom connection klien AI, gunakan `https://www.mcpsatudataaceh.web.id/mcp` dan autentikasi OAuth. Ketersediaan menu bergantung pada klien, akun, dan kebijakan workspace.
 3. Untuk klien yang mendukung discovery/CIMD/DCR, biarkan client ID dan secret kosong agar diperoleh otomatis. Public client menggunakan `token_endpoint_auth_method=none` plus PKCE; confidential DCR client juga dapat menggunakan `client_secret_post` atau `client_secret_basic`.
@@ -121,22 +123,7 @@ Database lama dimigrasikan otomatis: email ditandai belum terverifikasi dan sesi
 
 ## Cloudflare Worker
 
-Worker tetap stateless; akun/SQLite/vault dikelola oleh **layanan Python kanonis**. Worker harus dihubungkan ke origin Python HTTPS yang berbeda, bukan ke URL Worker itu sendiri:
-
-```text
-ACCOUNTS_SERVICE_URL=https://www.mcpsatudataaceh.web.id
-ACCOUNTS_SERVICE_SECRET=SECRET_JEMBATAN_ACAK_MINIMAL_32_KARAKTER
-```
-
-Simpan secret melalui `wrangler secret put ACCOUNTS_SERVICE_SECRET` dan setel secret identik pada environment Python. Tambahkan origin publik Worker ke `ACCOUNTS_ALLOWED_ORIGINS` Python agar login melalui gateway diterima. Worker memverifikasi token/sesi setiap request dengan `/internal/accounts/resolve`, yang membutuhkan shared secret. Key hasil resolusi hanya dipakai pada scope request, tidak ditulis ke environment global/database Worker. Jaga secret jembatan dan origin Python; Worker adalah bagian tepercaya dari infrastruktur yang memproses key plaintext di memori.
-
-Route akun diproksikan ke Python; cookie HttpOnly dikirim oleh browser pada origin Worker. Cegah pencatatan cookie/header/token pada proxy/tracing. Tanpa layanan akun terkonfigurasi/tersedia, Worker gagal tertutup, bukan menggunakan key operator. OAuth diaktifkan pada endpoint Python kanonis; Worker tetap memakai token manual dan tidak menerima token OAuth yang ditujukan ke resource Python. Endpoint MCP Worker: `/mcp`. Landing page disajikan dari `public/` via Assets.
-
-```bash
-cd worker
-npm ci
-npm run dev
-```
+Gateway Cloudflare dikelola dalam repositori mandiri `MCP_SatuDataAceh_Worker`. Proyek ini menyediakan layanan Python untuk akun, vault, dan OAuth. Lihat [struktur dan cara sinkronisasi Worker](docs/pemisahan-worker.md).
 
 ## Penyimpanan, backup, dan rotasi
 
@@ -178,12 +165,9 @@ STDIO lokal tetap menggunakan `BPS_API_KEY` dari environment pemilik proses, tan
 
 ```bash
 python3 -m unittest discover -s tests -v
-cd worker
-npm run typecheck
-npm test
 ```
 
-Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. `npm run test:live` terpisah dan memerlukan key di environment. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Tes OAuth mencakup discovery, DCR, consent/CSRF, PKCE, replay kode, resource/audience, refresh rotation/reuse, pencabutan, serta isolasi akun. Verifikasi email dan OAuth tersedia; reset password lewat email dan MFA belum tersedia.
+Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Tes OAuth mencakup discovery, DCR, consent/CSRF, PKCE, replay kode, resource/audience, refresh rotation/reuse, pencabutan, serta isolasi akun. Verifikasi email dan OAuth tersedia; reset password lewat email dan MFA belum tersedia.
 
 
 ## Kualitas hasil dan alur tool yang disarankan
