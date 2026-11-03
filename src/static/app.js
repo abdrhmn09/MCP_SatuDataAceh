@@ -1,7 +1,9 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const state = { profile: null, csrf: '', email: '', authMode: 'login', verification: '', secret: '', secretNext: 'login', booted: false };
-const protectedPages = new Set(['dashboard', 'keys', 'tokens', 'connection', 'security']);
+const protectedPages = new Set(['dashboard', 'keys', 'tokens', 'apps', 'connection', 'security']);
+state.oauth = sessionStorage.getItem('oauth_request') || '';
+state.config = {};
 const authPages = new Set(['login', 'register', 'recover', 'resend']);
 let toastTimer;
 class ApiError extends Error { constructor(message, status, code) { super(message); this.status = status; this.code = code; } }
@@ -49,10 +51,10 @@ function updateAccount() {
   $('explorerLoginNotice').hidden = Boolean(data);
   if (!data) return;
   $('sidebarEmail').textContent = data.user.email; $('profileEmail').textContent = data.user.email;
-  const completed = 1 + Number(Boolean(hasKey())) + Number(data.tokens.length > 0);
+  const completed = 1 + Number(Boolean(hasKey())) + Number(data.tokens.length > 0 || data.apps?.length > 0);
   $('setupCount').textContent = completed + ' dari 3 selesai'; $('setupProgress').style.width = (completed / 3 * 100) + '%';
   $('setupKeyText').textContent = hasKey() ? 'API key BPS sudah tersimpan terenkripsi.' : 'Diperlukan agar server dapat mengambil data BPS untuk Anda.';
-  $('setupTokenText').textContent = data.tokens.length ? data.tokens.length + ' token aktif. Kelola akses masing-masing klien.' : 'Token inilah yang Anda pasang pada klien AI.';
+  $('setupTokenText').textContent = data.apps?.length ? data.apps.length + ' aplikasi terhubung melalui OAuth.' : data.tokens.length ? data.tokens.length + ' token manual aktif.' : 'Hubungkan aplikasi dengan OAuth atau buat token manual.';
   updateKey(); renderTokens();
 }
 function updateKey() {
@@ -103,11 +105,17 @@ function setAuthMode(mode) {
 function captureVerification() {
   const raw = location.hash.slice(1);
   if (raw.startsWith('verify=')) { state.verification = new URLSearchParams(raw).get('verify') || ''; history.replaceState(null, '', location.pathname + location.search + '#verify'); }
+  if (raw.startsWith('oauth=')) {
+    const value = new URLSearchParams(raw).get('oauth') || '';
+    state.oauth = /^[A-Za-z0-9_-]{43}$/.test(value) ? value : '';
+    if (state.oauth) sessionStorage.setItem('oauth_request', state.oauth);
+    history.replaceState(null, '', location.pathname + location.search + '#oauth');
+  }
 }
 function route() {
   captureVerification();
   let page = location.hash.slice(1) || (state.profile ? 'dashboard' : 'home');
-  if (!['home', 'explore', 'guide', 'wait', 'verify', 'secret', ...authPages, ...protectedPages].includes(page)) page = 'home';
+  if (!['home', 'explore', 'guide', 'wait', 'verify', 'secret', 'oauth', ...authPages, ...protectedPages].includes(page)) page = 'home';
   if (protectedPages.has(page) && !state.profile) { history.replaceState(null, '', '#login'); page = 'login'; }
   if (authPages.has(page) && state.profile) { history.replaceState(null, '', '#dashboard'); page = 'dashboard'; }
   if (page === 'secret' && !state.secret) { page = state.profile ? 'tokens' : 'login'; history.replaceState(null, '', '#' + page); }
@@ -124,6 +132,8 @@ function route() {
     if (!state.verification) message('verifyMessage', 'Tautan tidak tersedia atau sudah digunakan. Masuk atau minta tautan baru.');
   }
   if (page === 'explore') $('explorerLoginNotice').hidden = Boolean(state.profile);
+  if (page === 'oauth') loadConsent();
+  if (page === 'apps') loadApps();
   window.scrollTo({ top: 0, behavior: 'instant' });
   document.title = (authPages.has(page) ? { login: 'Masuk', register: 'Daftar', recover: 'Pemulihan', resend: 'Verifikasi email' }[page] : protectedPages.has(page) ? 'Dashboard' : 'Ruang data') + ' · MCP Satu Data Aceh';
 }
@@ -146,7 +156,7 @@ $('authForm').addEventListener('submit', async event => {
     try {
       const data = await account(mode, { email: state.email, password: $('password').value, recovery_code: $('recoveryCode').value });
       $('password').value = ''; $('passwordConfirm').value = ''; $('recoveryCode').value = '';
-      if (mode === 'login') { await refreshAccount(); location.hash = 'dashboard'; toast('Berhasil masuk. Selamat datang kembali.'); }
+      if (mode === 'login') { await refreshAccount(); location.hash = state.oauth ? 'oauth' : 'dashboard'; toast('Berhasil masuk. Selamat datang kembali.'); }
       else if (mode === 'register') {
         $('waitEmail').textContent = state.email; $('waitMessage').textContent = data.verification_sent ? 'Email telah diterima layanan pengirim. Periksa inbox dan spam.' : 'Akun berhasil dibuat, tetapi email belum dapat dikirim. Tunggu satu menit lalu gunakan Kirim ulang.';
         showSecret(data.recovery_code, 'recovery', 'wait');
@@ -216,7 +226,7 @@ $('passwordForm').addEventListener('submit', async event => {
   });
 });
 document.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', () => { const input = $(button.dataset.toggle); const visible = input.type === 'password'; input.type = visible ? 'text' : 'password'; button.textContent = visible ? 'Sembunyikan' : 'Lihat'; button.setAttribute('aria-label', (visible ? 'Sembunyikan ' : 'Tampilkan ') + (button.dataset.toggle === 'savedKey' ? 'API key' : 'password')); }));
-function endpoint() { $('endpoint').textContent = location.origin + '/' + $('transport').value; }
+function endpoint() { $('endpoint').textContent = ($('transport').value === 'mcp' ? state.config.mcp_url : state.config.sse_url) || location.origin + '/' + $('transport').value; }
 $('transport').addEventListener('change', endpoint); $('copyEndpoint').addEventListener('click', () => copy($('endpoint').textContent, 'Endpoint')); endpoint();
 async function loadSchema() {
   try {
@@ -228,6 +238,54 @@ async function loadSchema() {
   } catch { $('schema').textContent = 'Skema belum dapat dimuat. Periksa ketersediaan layanan.'; }
 }
 $('operation').addEventListener('change', loadSchema);
+async function loadConsent() {
+  $('oauthDetails').hidden = true; $('oauthLogin').hidden = Boolean(state.profile); message('oauthError', '');
+  if (!state.oauth) { $('oauthLogin').hidden = true; message('oauthError', 'Permintaan koneksi tidak tersedia. Mulai koneksi dari aplikasi AI Anda.'); return; }
+  if (!state.profile) return;
+  try {
+    const data = await request('/api/oauth/consent', { request: state.oauth, decision: 'inspect' });
+    for (const [id, value] of Object.entries({ oauthName: data.name, oauthAccount: state.profile.user.email, oauthClient: data.client_id, oauthCallback: data.redirect_uri })) $(id).textContent = value;
+    $('oauthDetails').hidden = false;
+  } catch (error) { message('oauthError', error.message); }
+}
+async function decideConsent(decision) {
+  $('oauthApprove').disabled = true; $('oauthDeny').disabled = true; message('oauthError', '');
+  try {
+    const data = await request('/api/oauth/consent', { request: state.oauth, decision });
+    const target = new URL(data.redirect);
+    if (!['https:', 'http:'].includes(target.protocol)) throw Error('Callback tidak valid.');
+    state.oauth = ''; sessionStorage.removeItem('oauth_request');
+    location.assign(target.href);
+  } catch (error) { message('oauthError', error.message); }
+  finally { $('oauthApprove').disabled = false; $('oauthDeny').disabled = false; }
+}
+$('oauthApprove').addEventListener('click', () => decideConsent('approve'));
+$('oauthDeny').addEventListener('click', () => decideConsent('deny'));
+$('oauthCancel').addEventListener('click', () => { state.oauth = ''; sessionStorage.removeItem('oauth_request'); location.hash = state.profile ? 'dashboard' : 'login'; });
+async function loadApps() {
+  try {
+    const data = await account('apps', {});
+    if (state.profile) state.profile.apps = data.apps;
+    const rows = data.apps.map(app => {
+      const row = document.createElement('div'); row.className = 'token-row';
+      const body = document.createElement('div'); body.className = 'body';
+      const title = document.createElement('strong'); title.textContent = app.name;
+      const info = document.createElement('p'); info.textContent = 'Callback: ' + new URL(app.redirect_uri).host + ' · Berakhir ' + date(app.expires);
+      const client = document.createElement('p'); client.textContent = 'ID: ' + app.client_id; client.style.overflowWrap = 'anywhere';
+      const button = document.createElement('button'); button.className = 'danger'; button.type = 'button'; button.textContent = 'Cabut akses'; button.setAttribute('aria-label', 'Cabut akses ' + app.name);
+      button.addEventListener('click', async () => {
+        if (button.dataset.confirm !== 'yes') { button.dataset.confirm = 'yes'; button.textContent = 'Konfirmasi cabut'; setTimeout(() => { if (button.isConnected) { button.dataset.confirm = ''; button.textContent = 'Cabut akses'; } }, 6000); return; }
+        button.disabled = true;
+        try { await account('apps', { revoke: app.id }); await refreshAccount(); await loadApps(); toast('Akses aplikasi dicabut.'); }
+        catch (error) { message('dashboardError', error.message); button.disabled = false; }
+      });
+      body.append(title, info, client); row.append(body, button); return row;
+    });
+    if (!rows.length) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Belum ada aplikasi terhubung. Mulai koneksi OAuth dari aplikasi AI Anda.'; rows.push(empty); }
+    $('appList').replaceChildren(...rows);
+  } catch (error) { message('dashboardError', error.message); }
+}
+$('refreshApps').addEventListener('click', () => busy('refreshApps', 'Memperbarui…', loadApps));
 $('explorer').addEventListener('submit', async event => {
   event.preventDefault(); message('explorerError', '');
   if (!state.profile) { location.hash = 'login'; toast('Masuk terlebih dahulu untuk memakai explorer.'); return; }
@@ -243,6 +301,7 @@ window.addEventListener('pagehide', () => { for (const id of ['password', 'passw
 window.addEventListener('pageshow', async event => { if (event.persisted) { try { await refreshAccount(); } catch { state.profile = null; } route(); } });
 (async () => {
   captureVerification();
+  try { const r = await fetch('/api/account/config', { cache: 'no-store' }); if (r.ok) state.config = await r.json(); endpoint(); } catch { /* Relative fallback remains available. */ }
   try { await refreshAccount(); } catch { toast('Status akun belum dapat diperiksa. Coba muat ulang jika login gagal.'); }
   state.booted = true; route();
   try { const response = await fetch('/api/bps/endpoints'); if (!response.ok) throw Error(); const data = await response.json(); $('operation').replaceChildren(...data.operations.map(op => { const option = document.createElement('option'); option.value = op.operation; option.textContent = op.group + ' / ' + op.summary; return option; })); await loadSchema(); } catch { $('schema').textContent = 'Katalog operasi belum tersedia.'; }

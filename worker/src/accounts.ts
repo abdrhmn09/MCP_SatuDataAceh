@@ -34,7 +34,7 @@ export async function resolveAccount(request:Request,env:AccountEnv,kind:'mcp'|'
 export async function proxyAccount(request:Request,env:AccountEnv) {
   const root=service(env), incoming=new URL(request.url);
   if(root===incoming.origin) throw new Error('Account service must point to the canonical Python origin');
-  if(!/^\/api\/account\/(config|register|login|recover|resend|verify|me|logout|credentials|tokens|password)$/.test(incoming.pathname)) return new Response('Not found',{status:404});
+  if(!/^\/api\/account\/(config|register|login|recover|resend|verify|me|logout|credentials|tokens|password|apps)$/.test(incoming.pathname)) return new Response('Not found',{status:404});
   if(request.method!=='GET' && request.headers.get('origin')!==incoming.origin) return Response.json({error:'origin_rejected'},{status:403});
   const headers=new Headers({'X-Account-Service-Secret':env.ACCOUNTS_SERVICE_SECRET!, 'X-Account-Client-IP':request.headers.get('CF-Connecting-IP')||'worker'});
   for(const name of ['cookie','origin','content-type','x-csrf-token']) { const value=request.headers.get(name);if(value)headers.set(name,value); }

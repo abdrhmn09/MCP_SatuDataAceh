@@ -28,9 +28,16 @@ def main():
             nonce=secrets.token_bytes(12)
             db.execute('UPDATE credentials SET ciphertext=? WHERE user_id=? AND service=?',(nonce+cipher.encrypt(nonce,plaintext,aad),uid,service))
         nonce=secrets.token_bytes(12)
+        for row in db.execute('SELECT id,value FROM oauth_clients').fetchall():
+            client_id,old=row
+            aad=('oauth-client:'+client_id).encode()
+            plaintext=vault.cipher.decrypt(old[:12],old[12:],aad)
+            client_nonce=secrets.token_bytes(12)
+            db.execute('UPDATE oauth_clients SET value=? WHERE id=?',(client_nonce+cipher.encrypt(client_nonce,plaintext,aad),client_id))
         db.execute('UPDATE vault_meta SET check_value=? WHERE id=1',(nonce+cipher.encrypt(nonce,b'vault-v1',b'vault-check'),))
         # Existing browser CSRF tokens change under the new master key.
         db.execute('DELETE FROM sessions')
+        db.execute('DELETE FROM oauth_pending')
     print('Vault key rotated. Update server encryption secret before restarting; old browser sessions invalidated.')
 
 

@@ -92,7 +92,12 @@ def _account_key(service='bps'):
     user = accounts.principal.get()
     if user:
         vault = accounts.get_vault()
-        if not vault.identity(user['raw'],user['kind']):
+        if user['kind']=='oauth':
+            from .oauth import OAuthStore
+            valid=OAuthStore(vault).identity(user['raw'],user['resource'])
+        else:
+            valid=vault.identity(user['raw'],user['kind'])
+        if not valid:
             raise ValueError('Sesi atau token telah dicabut.')
         key = vault.get_key(user['id'],service)
         if service == 'sdgs' and not key:
@@ -988,7 +993,7 @@ async def bps_check_key(service: str = "bps") -> dict:
 
 @mcp.custom_route("/", methods=["GET"], include_in_schema=False)
 async def landing_page(_: Request):
-    return FileResponse(Path(__file__).parent / "static" / "index.html")
+    return FileResponse(Path(__file__).parent / "static" / "index.html", headers={'X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'})
 
 
 @mcp.custom_route("/app.js", methods=["GET"], include_in_schema=False)
@@ -1507,28 +1512,33 @@ async def bandingkan_data(indikator: str) -> str:
     return "\n\n---\n\n".join(bagian) + "\n\n" + kesimpulan
 
 
+def create_remote_app(transport='both'):
+    """Use the HTTP app lifespan for /mcp, and retain legacy SSE routes."""
+    from .accounts_http import install
+    kwargs = {'host': _MCP_HOST, 'transport_security': _transport_security} if _security_at_runtime else {}
+    if transport == 'sse':
+        app = mcp.sse_app(**kwargs)
+    else:
+        app = mcp.streamable_http_app(**kwargs, **({'stateless_http': True} if _security_at_runtime else {}))
+        if transport == 'both':
+            app.routes.extend(route for route in mcp.sse_app(**kwargs).routes if getattr(route, 'path', '') in {'/sse', '/messages'})
+    return install(app)
+
+
 def main() -> None:
     """Menjalankan server lokal STDIO atau server remote SSE."""
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
-    if transport not in {"stdio", "sse", "streamable-http"}:
-        raise ValueError("MCP_TRANSPORT harus berupa stdio, sse, atau streamable-http.")
+    if transport not in {"stdio", "sse", "streamable-http", "both"}:
+        raise ValueError("MCP_TRANSPORT harus berupa stdio, sse, streamable-http, atau both.")
     if transport == "stdio":
         mcp.run(transport=transport)
     else:
         # Accounts are enforced at the ASGI boundary, including SSE message POSTs.
         import uvicorn
-        try:
-            from .accounts_http import install
-        except ImportError:
-            from accounts_http import install
         accounts.get_vault()  # Fail closed before binding if the master key is absent/wrong.
         if os.getenv('ACCOUNTS_DEV_HTTP') == '1' and _MCP_HOST not in {'127.0.0.1','localhost','::1'}:
             raise ValueError('ACCOUNTS_DEV_HTTP hanya boleh digunakan pada loopback.')
-        if _security_at_runtime:
-            app = (mcp.sse_app if transport == 'sse' else mcp.streamable_http_app)(host=_MCP_HOST, transport_security=_transport_security, **({'stateless_http': True} if transport != 'sse' else {}))
-        else:
-            app = (mcp.sse_app if transport == 'sse' else mcp.streamable_http_app)()
-        uvicorn.run(install(app),host=_MCP_HOST,port=_MCP_PORT)
+        uvicorn.run(create_remote_app(transport),host=_MCP_HOST,port=_MCP_PORT)
 
 
 if __name__ == "__main__":

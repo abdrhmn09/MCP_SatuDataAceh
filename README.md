@@ -7,13 +7,13 @@ Server MCP independen untuk Portal Satu Data Aceh dan [Web API BPS](https://weba
 1. Daftar akun dengan email dan password minimal 12 karakter.
 2. Simpan **kode pemulihan** yang hanya ditampilkan sekali. Verifikasi email melalui tautan yang dikirim sebelum login. Tidak ada email reset password otomatis.
 3. Setelah email terverifikasi, login dan simpan API key BPS pada dashboard. Token SDGs terpisah dapat disimpan jika diperlukan.
-4. Buat **token akses MCP** untuk setiap klien. Token hanya ditampilkan sekali, dengan masa berlaku 1–90 hari (default 30).
-5. Pasang header koneksi klien: `Authorization: Bearer TOKEN_MCP_ANDA`.
+4. Tambahkan URL `/mcp` ke aplikasi AI dan pilih OAuth. Login di domain utama lalu periksa aplikasi, callback, dan izin sebelum menekan **Izinkan akses**.
+5. Alternatif untuk klien header manual: buat **token akses MCP** di dashboard dan pasang `Authorization: Bearer TOKEN_MCP_ANDA` (1–90 hari, default 30).
 6. Server mengenali akun, mendekripsi key milik akun itu untuk permintaan BPS, dan menyamarkan credential pada respons.
 
 Password menggunakan scrypt (N=131072, r=8, p=1, salt acak). API key dienkripsi AES-256-GCM dengan nonce acak dan associated data yang mengikat ciphertext ke pengguna/layanan. Kunci enkripsi utama berasal dari environment, terpisah dari database. Session/token MCP dan kode pemulihan hanya disimpan sebagai hash SHA-256 dari secret acak berentropi tinggi. Email dan metadata akun disimpan sebagai metadata biasa; seluruh berkas SQLite **bukan** database terenkripsi.
 
-Dashboard dapat mengganti/menghapus key, membuat/mencabut token, mengganti password, dan memulihkan akun menggunakan kode pemulihan. Ganti/reset password mencabut seluruh sesi dan token. Reset juga mengganti kode pemulihan. Jika password **dan** kode pemulihan hilang, tidak ada reset mandiri. Tidak ada akses baca ulang key BPS atau token yang pernah dibuat dari dashboard.
+Dashboard dapat mengganti/menghapus key, membuat/mencabut token, mengganti password, dan memulihkan akun menggunakan kode pemulihan. Ganti/reset password mencabut seluruh sesi, token manual, dan grant OAuth. Reset juga mengganti kode pemulihan. Jika password **dan** kode pemulihan hilang, tidak ada reset mandiri. Tidak ada akses baca ulang key BPS atau token yang pernah dibuat dari dashboard.
 
 ## Perubahan dari versi sebelumnya
 
@@ -21,7 +21,28 @@ Dashboard dapat mengganti/menghapus key, membuat/mencabut token, mengganti passw
 
 Cookie login browser tidak dapat digunakan sebagai token MCP. Browser explorer memakai sesi HttpOnly dan CSRF, sedangkan `/mcp`, `/sse`, dan `/messages/` mewajibkan Bearer token MCP. Kepemilikan session transport diperiksa. Pencabutan dan kedaluwarsa diperiksa pada request berikutnya; permintaan upstream yang sudah berjalan tidak otomatis dibatalkan. Penghapusan key membuat tool BPS gagal sampai key baru disimpan; tool katalog Aceh tetap dapat digunakan oleh token akun yang valid.
 
-Ini adalah autentikasi **Bearer manual**, bukan implementasi OAuth/SSO. Gunakan klien MCP yang mendukung header manual. Untuk SSE, kirim token pada GET `/sse` **dan** POST `/messages/`. Browser login tidak otomatis mengonfigurasi koneksi klien AI.
+OAuth Authorization Code + PKCE S256 tersedia melalui akun yang sama. API key BPS tidak diteruskan ke aplikasi AI. Token manual tetap didukung; untuk SSE kirim Bearer saat GET `/sse` **dan** POST `/messages/`.
+
+## Menghubungkan ChatGPT Web dan klien OAuth
+
+1. Pastikan `MCP_TRANSPORT=both` dan `ACCOUNTS_PUBLIC_ORIGIN` memakai satu origin HTTPS utama, misalnya `https://www.mcpsatudataaceh.web.id`.
+2. Pada pengaturan MCP/custom connection klien AI, gunakan `https://www.mcpsatudataaceh.web.id/mcp` dan autentikasi OAuth. Ketersediaan menu bergantung pada klien, akun, dan kebijakan workspace.
+3. Untuk klien yang mendukung discovery/CIMD/DCR, biarkan client ID dan secret kosong agar diperoleh otomatis. Public client menggunakan `token_endpoint_auth_method=none` plus PKCE; confidential DCR client juga dapat menggunakan `client_secret_post` atau `client_secret_basic`.
+4. Login dan konfirmasikan persetujuan pada situs ini. Periksa identitas dan callback: nama aplikasi DCR diberikan oleh klien, bukan bukti bahwa aplikasi telah diverifikasi.
+5. Kelola izin di **Aplikasi terhubung**. Mencabut satu aplikasi membatalkan access token dan refresh token grant tersebut. Akses yang sedang berjalan tidak dibatalkan secara retroaktif.
+
+Server menerbitkan token opaque dengan scope tunggal `data:read`; access token berlaku 15 menit, grant dan refresh token maksimal 30 hari sejak persetujuan. Refresh token dirotasi pada setiap pemakaian; pemakaian ulang token lama mencabut seluruh grant, sehingga klien perlu menyinkronkan refresh. Kode otorisasi berlaku 2 menit dan hanya dapat ditukar sekali. Permintaan persetujuan berlaku 15 menit dan diikat ke sesi akun saat ditinjau. Semua token/kode disimpan sebagai hash; client secret DCR dienkripsi dengan master key vault. Session dashboard tidak dapat dipakai sebagai token OAuth dan token OAuth tidak memberi akses ke API pengelolaan akun.
+
+Discovery publik (tidak membutuhkan login):
+
+- `GET /.well-known/oauth-protected-resource/mcp` (juga root dan `/sse`).
+- `GET /.well-known/oauth-authorization-server`.
+- `GET /authorize`, `POST /token`, `POST /register`, `POST /revoke`.
+- Persetujuan akun menggunakan `POST /api/oauth/consent` dengan cookie, pemeriksaan Origin dan CSRF.
+
+`resource` wajib pada authorize/token dan harus sama persis dengan URL `/mcp` atau `/sse` pada origin utama. Token untuk `/mcp` tidak diterima pada `/sse`, dan sebaliknya. Callback harus terdaftar, HTTPS (HTTP hanya untuk loopback native), tanpa fragment/userinfo; redirect wildcard tidak digunakan. `iss` dikembalikan pada callback sukses maupun penolakan. DCR menggunakan SDK MCP; CIMD hanya mengambil metadata HTTPS dari host pada `OAUTH_CIMD_HOSTS` (default `chatgpt.com,claude.ai`), maksimal 16 KiB, tanpa redirect, dengan pencocokan `client_id` dan callback. Metadata CIMD di-cache satu jam. Klien lain dapat memakai DCR tanpa menambahkan host; jangan memasukkan host yang tidak dipercaya ke allowlist CIMD.
+
+Endpoint OAuth tidak memerlukan API key OpenAI, Google OAuth, maupun perubahan autentikasi BPS. Dukungan protokol perlu tetap diuji pada klien AI tujuan; server ini tidak otomatis mempublikasikan plugin ke direktori penyedia AI.
 
 ## Deployment VPS Python
 
@@ -41,7 +62,7 @@ python3 -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32
 Konfigurasi penting:
 
 ```dotenv
-MCP_TRANSPORT=sse
+MCP_TRANSPORT=both
 MCP_HOST=127.0.0.1
 MCP_PORT=8000
 ACCOUNTS_ENCRYPTION_KEY=ISI_DENGAN_MASTER_KEY_YANG_DIBUAT_SENDIRI
@@ -71,7 +92,7 @@ sudo install -m 644 deploy/nginx.conf /etc/nginx/sites-available/mcpsatudataaceh
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Restart/recreate aplikasi setelah mengganti kode atau environment. SSE memakai `/sse`; pilih `MCP_TRANSPORT=streamable-http` untuk `/mcp`. Satu proses Python menjalankan transport yang dipilih, bukan keduanya sekaligus. `/health` hanya liveness dan status cache, bukan bukti upstream BPS tersedia.
+Restart/recreate aplikasi setelah mengganti kode atau environment. Gunakan `MCP_TRANSPORT=both` untuk `/mcp` dan `/sse` bersama-sama. Mode `sse` dan `streamable-http` tetap tersedia bila ingin satu transport saja; discovery tetap mempublikasikan kedua resource, jadi pilih URL yang transportnya aktif. `/health` hanya liveness dan status cache, bukan bukti upstream BPS tersedia.
 
 Template `render.yaml` sekarang membutuhkan disk persisten dan plan yang mendukung disk (starter). Ini dapat menimbulkan biaya bila Anda memilih deploy melalui Render; tidak ada deployment otomatis dari pekerjaan lokal. Jangan menaruh database akun pada filesystem sementara layanan gratis.
 
@@ -109,7 +130,7 @@ ACCOUNTS_SERVICE_SECRET=SECRET_JEMBATAN_ACAK_MINIMAL_32_KARAKTER
 
 Simpan secret melalui `wrangler secret put ACCOUNTS_SERVICE_SECRET` dan setel secret identik pada environment Python. Tambahkan origin publik Worker ke `ACCOUNTS_ALLOWED_ORIGINS` Python agar login melalui gateway diterima. Worker memverifikasi token/sesi setiap request dengan `/internal/accounts/resolve`, yang membutuhkan shared secret. Key hasil resolusi hanya dipakai pada scope request, tidak ditulis ke environment global/database Worker. Jaga secret jembatan dan origin Python; Worker adalah bagian tepercaya dari infrastruktur yang memproses key plaintext di memori.
 
-Route akun diproksikan ke Python; cookie HttpOnly dikirim oleh browser pada origin Worker. Cegah pencatatan cookie/header/token pada proxy/tracing. Tanpa layanan akun terkonfigurasi/tersedia, Worker gagal tertutup, bukan menggunakan key operator. Endpoint MCP Worker: `/mcp`. Landing page disajikan dari `public/` via Assets.
+Route akun diproksikan ke Python; cookie HttpOnly dikirim oleh browser pada origin Worker. Cegah pencatatan cookie/header/token pada proxy/tracing. Tanpa layanan akun terkonfigurasi/tersedia, Worker gagal tertutup, bukan menggunakan key operator. OAuth diaktifkan pada endpoint Python kanonis; Worker tetap memakai token manual dan tidak menerima token OAuth yang ditujukan ke resource Python. Endpoint MCP Worker: `/mcp`. Landing page disajikan dari `public/` via Assets.
 
 ```bash
 cd worker
@@ -162,4 +183,4 @@ npm run typecheck
 npm test
 ```
 
-Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. `npm run test:live` terpisah dan memerlukan key di environment. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Verifikasi email tersedia; OAuth otomatis, reset password lewat email, dan MFA belum tersedia.
+Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. `npm run test:live` terpisah dan memerlukan key di environment. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Tes OAuth mencakup discovery, DCR, consent/CSRF, PKCE, replay kode, resource/audience, refresh rotation/reuse, pencabutan, serta isolasi akun. Verifikasi email dan OAuth tersedia; reset password lewat email dan MFA belum tersedia.

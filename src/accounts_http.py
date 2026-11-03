@@ -69,7 +69,8 @@ async def account_route(request):
         vault=get_vault()
         action=request.path_params['action']
         if request.method=='GET' and action=='config':
-            return result({'mode':'accounts','registration':True,'email_verification':True})
+            from .oauth import origin
+            return result({'mode':'accounts','registration':True,'email_verification':True,'oauth':True,'mcp_url':origin()+'/mcp','sse_url':origin()+'/sse'})
         if request.method=='POST' and not origin_allowed(request): return result({'error':'origin_rejected'},403)
         raw=request.cookies.get(cookie_name(),'')
         user=vault.identity(raw)
@@ -130,6 +131,11 @@ async def account_route(request):
                 return result({'ok':True})
             token=vault.create_token(uid,body.get('label'),body.get('days',30))
             return result({'ok':True,'token':token,'message':'Token hanya ditampilkan sekali. Simpan di pengaturan klien MCP.'},201)
+        if action=='apps':
+            from .oauth import OAuthStore
+            store=OAuthStore(vault)
+            if body.get('revoke'): store.revoke_app(uid,body['revoke'])
+            return result({'apps':store.apps(uid)})
         if action=='password':
             async with _hash_slots: await asyncio.to_thread(vault.change_password,uid,body.get('old_password'),body.get('password'))
             return result({'ok':True,'message':'Password diganti; semua sesi dan token dicabut. Login kembali.'})
@@ -148,7 +154,11 @@ def resolve(vault, request, kind='mcp'):
         auth=request.headers.get('authorization','')
         raw=auth[7:] if auth.lower().startswith('bearer ') else ''
         user=vault.identity(raw,'mcp')
-    return {**user,'raw':raw,'kind':kind} if user else None
+        if not user and raw.startswith('oat_') and request.url.path!='/internal/accounts/resolve':
+            from .oauth import OAuthStore, origin
+            resource=origin()+('/sse' if request.url.path=='/sse' or request.url.path.startswith('/messages') else '/mcp')
+            user=OAuthStore(vault).identity(raw,resource)
+    return {**user,'raw':raw,'kind':'oauth' if 'oauth_client' in user else kind} if user else None
 
 
 async def resolve_internal(request):
@@ -180,7 +190,9 @@ class AccountMiddleware:
             user=resolve(vault,request,'session' if is_browser else 'mcp')
             if not user:
                 response=result({'error':'unauthorized','message':'Login dan buat token MCP di dashboard.'},401)
-                response.headers['WWW-Authenticate']='Bearer realm="MCP Satu Data Aceh"'
+                from .oauth import origin
+                endpoint='sse' if path=='/sse' or path.startswith('/messages') else 'mcp'
+                response.headers['WWW-Authenticate']='Bearer resource_metadata="'+origin()+'/.well-known/oauth-protected-resource/'+endpoint+'", scope="data:read"'
                 return await response(scope,receive,send)
             if is_browser and (not origin_allowed(request) or not hmac.compare_digest(request.headers.get('x-csrf-token',''),vault.csrf(user['raw']))):
                 return await result({'error':'csrf_rejected'},403)(scope,receive,send)
@@ -213,6 +225,8 @@ class AccountMiddleware:
 
 
 def install(app):
+    from .oauth_http import oauth_routes
+    app.routes[0:0]=oauth_routes()
     app.routes.insert(0,Route('/api/account/{action}',account_route,methods=['GET','POST']))
     app.routes.insert(0,Route('/internal/accounts/resolve',resolve_internal,methods=['POST']))
     app.add_middleware(AccountMiddleware)

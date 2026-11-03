@@ -78,6 +78,8 @@ class Vault:
                 db.execute('DELETE FROM sessions')
                 db.execute('DELETE FROM tokens')
         self.dummy_password = password_hash('dummy-password-never-used')
+        from .oauth import init_schema
+        init_schema(self)
 
     @contextmanager
     def db(self):
@@ -198,7 +200,8 @@ class Vault:
             user=db.execute('SELECT id,email,created,email_verified FROM users WHERE id=?',(uid,)).fetchone()
             keys=[dict(row) for row in db.execute('SELECT service,updated FROM credentials WHERE user_id=?',(uid,))]
             tokens=[dict(row) for row in db.execute('SELECT id,label,created,expires FROM tokens WHERE user_id=? AND expires>? ORDER BY created DESC',(uid,int(time.time())))]
-        return {'user':dict(user),'credentials':keys,'tokens':tokens}
+        from .oauth import OAuthStore
+        return {'user':dict(user),'credentials':keys,'tokens':tokens,'apps':OAuthStore(self).apps(uid)}
 
     def create_token(self,uid,label,days=30):
         if not isinstance(label,str) or not 1<=len(label.strip())<=80 or isinstance(days,bool) or not isinstance(days,int) or not 1<=days<=90: raise ValueError('Label wajib diisi; masa berlaku token 1–90 hari.')
@@ -227,6 +230,8 @@ class Vault:
             if changed.rowcount!=1: raise ValueError('Password berubah; silakan login kembali.')
             db.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
             db.execute('DELETE FROM tokens WHERE user_id=?',(uid,))
+            from .oauth import revoke_user
+            revoke_user(db,uid)
 
     def recover(self,email,code,password):
         email=self.email(email)
@@ -241,6 +246,8 @@ class Vault:
             db.execute('UPDATE users SET password=?,recovery=? WHERE id=?',(encoded,digest(recovery),uid))
             db.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
             db.execute('DELETE FROM tokens WHERE user_id=?',(uid,))
+            from .oauth import revoke_user
+            revoke_user(db,uid)
         return recovery
 
 
