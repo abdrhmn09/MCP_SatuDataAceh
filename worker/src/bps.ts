@@ -6,13 +6,11 @@ export interface BpsIndicator {
   var: string;
   label: string;
   category: string;
-  defaultTh?: string; // th_id (124=2024, 123=2023)
 }
 
 export interface BpsKeywordMatch {
   var: string;
   label: string;
-  defaultTh?: string;
 }
 
 export interface BpsDiagnosticResult {
@@ -146,8 +144,8 @@ export function bpsPayloadToText(payload: unknown): string {
             kode_wilayah: asText(vv.val), nama_wilayah: asText(vv.label),
             tahun: asText(th.label), indikator: varLabel, nilai: asText(datacontent[key]),
           };
-          if (turvar.length > 1) row.kategori = asText(tv.label);
-          if (turtahun.length > 1) row.periode = asText(tt.label);
+          if (turvar.length > 1 || String(tv.val) !== "0" && asText(tv.label)) row.kategori = asText(tv.label);
+          if (turtahun.length > 1 || String(tt.val) !== "0") row.periode = asText(tt.label);
           if (unit) row.satuan = unit;
           rows.push(row);
         }

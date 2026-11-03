@@ -76,11 +76,11 @@ class SecurityRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.next_offset, 6)
 
     async def test_fetch_does_not_return_bps_key(self):
-        item = {"identifier": "dataset", "title": "IPM", "landingPage": "https://example.com/dataset"}
+        item = {"identifier": "dataset", "title": "IPM", "landingPage": "https://example.com/dataset", "distribution":[{"format":"csv","downloadURL":"https://webapi.bps.go.id/key/test-secret/"}]}
         result = server.CsvReadResult("valid", "table", 1, 2, "https://webapi.bps.go.id/key/test-secret/")
         with patch.object(server, "muat_katalog", AsyncMock(return_value=[item])), \
              patch.object(server, "_unduh_csv", AsyncMock(return_value=server.CsvReadResult("empty", "", 0, 0, ""))), \
-             patch.object(server, "_ambil_dari_bps", AsyncMock(return_value=(result, {"reference_url": "https://webapi.bps.go.id/"}))), \
+             patch.object(server, "_ambil_langsung_dari_bps", AsyncMock(return_value=(result, {"reference_url": "https://webapi.bps.go.id/"}))), \
              patch.object(server._rate_limiter, "allow", AsyncMock(return_value=True)):
             output = await server.fetch("dataset")
         self.assertNotIn("test-secret", output.model_dump_json())
@@ -93,13 +93,15 @@ class SecurityRegressionTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(httpx.RequestError):
                 await server._validate_request_target(httpx.Request("GET", "https://public.example.com/data.csv"))
 
-    async def test_bps_first_request_does_not_limit_observation_year(self):
+    async def test_bps_period_metadata_is_used_instead_of_fixed_years(self):
         requests = []
         def handler(request):
             requests.append(request)
-            return httpx.Response(200, json={"data": [{"tahun": 2026, "nilai": 10}]})
-        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-        with patch.object(server, "BPS_API_KEY", "test-secret"), patch.object(server.httpx, "AsyncClient", return_value=client):
-            result = await server._ambil_langsung_dari_bps("42")
+            return httpx.Response(200,json={'status':'OK','data':[{'pages':1},[{'th_id':126,'th':'2026'}]]} if '/model/th/' in request.url.path else {'data':[{'tahun':2026,'nilai':10}]})
+        real_client=httpx.AsyncClient
+        with patch.object(server, 'BPS_API_KEY', 'test-secret'), patch.object(server.httpx,'AsyncClient',side_effect=lambda **kwargs:real_client(transport=httpx.MockTransport(handler),**kwargs)):
+            result=await server._ambil_langsung_dari_bps('42')
         self.assertIsNotNone(result)
-        self.assertNotIn("/th/", str(requests[0].url))
+        self.assertIn('/model/th/',str(requests[0].url))
+        self.assertIn('/th/126/',str(requests[1].url))
+        self.assertTrue(result[0].freshness['metadata_complete'])

@@ -44,15 +44,15 @@ describe("statistical regressions", () => {
     expect(bpsPayloadToText(payload)).toBe("");
   });
 
-  it("does not expose BPS keys and first requests all available periods", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      status: "OK", "data-availability": "available", data: [{ tahun: 2026, nilai: 10 }],
-    })));
-    vi.stubGlobal("fetch", fetchMock);
-    const result = await fetchFromBpsDirect("42", "1100", env);
-    expect(result?.analysis.status).toBe("valid");
-    expect(JSON.stringify(result)).not.toContain("test-secret");
-    expect(fetchMock.mock.calls[0][0]).not.toContain("/th/");
+  it("discovers period ids from metadata instead of fixed historical years", async () => {
+    const fetchMock=vi.fn(async(url:string)=>Response.json(url.includes('/model/th/')?{status:'OK',data:[{pages:1},[{th_id:126,th:'2026'}]]}:{status:'OK',data:[{tahun:2026,nilai:10}]}));
+    vi.stubGlobal('fetch',fetchMock);
+    const result=await fetchFromBpsDirect('42','1100',env);
+    expect(result?.analysis.status).toBe('valid');
+    expect(JSON.stringify(result)).not.toContain('test-secret');
+    expect(fetchMock.mock.calls[0][0]).toContain('/model/th/');
+    expect(fetchMock.mock.calls[1][0]).toContain('/th/126/');
+    expect(result?.analysis.freshness?.metadata_complete).toBe(true);
   });
 });
 

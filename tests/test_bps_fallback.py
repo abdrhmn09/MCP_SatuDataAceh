@@ -13,7 +13,7 @@ class BpsFallbackTests(unittest.IsolatedAsyncioTestCase):
             "landingPage": "https://satudata.acehprov.go.id/datasets/621",
         }
         with patch.object(server, "BPS_API_KEY", ""):
-            self.assertIsNone(await server._ambil_dari_bps(item))
+            self.assertIsNone(await server._ambil_langsung_dari_bps("42"))
 
     async def test_bps_mapping_kemiskinan_via_env_override(self):
         """Env override BPS_DATASET_MAP tetap bekerja melalui _BPS_DATASET_MAP_ENV."""
@@ -187,7 +187,7 @@ class BpsKeywordTests(unittest.TestCase):
         result = cari_var_bps_dari_kata_kunci("sayur")
         self.assertIsNotNone(result)
         self.assertEqual(result["var"], "581")
-        self.assertEqual(result["defaultTh"], "123")
+        self.assertNotIn("defaultTh", result)
 
     def test_indicator_map_mencakup_minimal_10_indikator(self):
         self.assertGreaterEqual(len(BPS_INDICATOR_MAP), 10)

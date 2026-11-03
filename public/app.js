@@ -195,8 +195,8 @@ $('keyForm').addEventListener('submit', async event => {
 $('testKey').addEventListener('click', () => busy('testKey', 'Menghubungi BPS…', async () => {
   try {
     const sdgs = $('keyService').value === 'sdgs';
-    const data = await request('/api/bps', { operation: sdgs ? 'getSdgsHome' : 'listDomains', parameters: sdgs ? {} : { type: 'all' } });
-    message('keyFeedback', data.ok ? 'Koneksi berhasil. Credential tersimpan diterima oleh BPS.' : 'Key tersimpan, tetapi BPS belum menerima permintaan. Periksa key, kuota, atau ketersediaan layanan BPS.', data.ok ? '' : 'error');
+    const data = await request('/api/bps', { operation: sdgs ? 'listSdgsGoals' : 'listDomains', parameters: sdgs ? {} : { type: 'all' } });
+    message('keyFeedback', data.ok ? 'Permintaan uji berhasil pada satu endpoint. Akses operasi lain belum diuji.' : 'Key tersimpan, tetapi BPS belum menerima permintaan. Periksa key, kuota, atau ketersediaan layanan BPS.', data.ok ? '' : 'error');
   } catch (error) { message('keyFeedback', error.message); }
 }));
 $('deleteKey').addEventListener('click', () => { $('deleteKeyConfirm').hidden = false; });
@@ -226,7 +226,8 @@ $('passwordForm').addEventListener('submit', async event => {
   });
 });
 document.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', () => { const input = $(button.dataset.toggle); const visible = input.type === 'password'; input.type = visible ? 'text' : 'password'; button.textContent = visible ? 'Sembunyikan' : 'Lihat'; button.setAttribute('aria-label', (visible ? 'Sembunyikan ' : 'Tampilkan ') + (button.dataset.toggle === 'savedKey' ? 'API key' : 'password')); }));
-function endpoint() { $('endpoint').textContent = ($('transport').value === 'mcp' ? state.config.mcp_url : state.config.sse_url) || location.origin + '/' + $('transport').value; }
+function endpoint() { $('oauthEndpoint').textContent = state.config.mcp_url || location.origin + '/mcp'; $('endpoint').textContent = ($('transport').value === 'mcp' ? state.config.mcp_url : state.config.sse_url) || location.origin + '/' + $('transport').value; }
+$('copyOAuthEndpoint').addEventListener('click', () => copy($('oauthEndpoint').textContent, 'URL MCP'));
 $('transport').addEventListener('change', endpoint); $('copyEndpoint').addEventListener('click', () => copy($('endpoint').textContent, 'Endpoint')); endpoint();
 async function loadSchema() {
   try {

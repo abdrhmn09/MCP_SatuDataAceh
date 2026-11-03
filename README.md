@@ -1,6 +1,6 @@
 # MCP Satu Data Aceh
 
-Server MCP independen untuk Portal Satu Data Aceh dan [Web API BPS](https://webapi.bps.go.id/documentation/). Menyediakan 8 tool dan 59 operasi BPS sesuai snapshot spesifikasi resmi. Ini bukan situs resmi BPS.
+Server MCP independen untuk Portal Satu Data Aceh dan [Web API BPS](https://webapi.bps.go.id/documentation/). Menyediakan 8 tool dan 59 operasi BPS sesuai snapshot spesifikasi resmi. Jumlah ini adalah cakupan registry, bukan bukti bahwa seluruh endpoint telah diuji langsung. Ini bukan situs resmi BPS.
 
 ## Alur pengguna
 
@@ -184,3 +184,17 @@ npm test
 ```
 
 Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. `npm run test:live` terpisah dan memerlukan key di environment. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Tes OAuth mencakup discovery, DCR, consent/CSRF, PKCE, replay kode, resource/audience, refresh rotation/reuse, pencabutan, serta isolasi akun. Verifikasi email dan OAuth tersedia; reset password lewat email dan MFA belum tersedia.
+
+
+## Kualitas hasil dan alur tool yang disarankan
+
+- Portal Aceh: `search(query, wilayah?, produsen?, limit?, offset?)` → `fetch(id)`. Filter wilayah hanya memeriksa judul/deskripsi/kata kunci katalog, bukan baris CSV. Hasil kosong tidak membuktikan bahwa wilayah tersebut tidak tercakup dalam dataset; periksa `metadata.coverage` pada fetch.
+- BPS: `bps_endpoints` → `bps_request`. Nama operasi salah menghasilkan `ok:false`, `error:unknown_operation`, `valid_operations`, dan saran nama, tanpa exception mentah. HTTP katalog mengembalikan 400 dengan body yang sama. `bps_check_key` hanya menguji satu endpoint; sukses tidak menjamin semua operasi tersedia.
+- `fetch` menyediakan tabel Markdown serta `data.columns`, `data.rows`, `returned_rows`, `total_rows`, dan `truncated`. Preview dibatasi 50 baris. Nilai kosong/nonfinite menjadi `null` pada JSON dan `—` pada tabel. Kolom administratif yang seluruhnya kosong dapat disembunyikan dari preview; kolom asli tetap ada pada JSON. Metadata quality melaporkan jumlah sel kosong, kolom indikator, nilai numerik terdeteksi, dan tahun terakhir dengan nilai indikator yang dapat dibaca. Jika kolom indikator ambigu, tool tidak menebaknya.
+- `fetch` menjaga sumber portal: kegagalan/CSV kosong tidak lagi diam-diam diganti data BPS. Ambil sumber BPS secara eksplisit menggunakan bps_request.
+- `bandingkan_data` adalah **audit terbatas**, bukan pemilih sumber paling benar atau termutakhir. Pemetaan indikatornya hanya kandidat. Pemeriksaan mencakup konsep/satuan, wilayah, tahun, subperiode, kategori, dan keberadaan nilai. Kesamaan angka per observasi, metodologi lengkap, dan semua rilis terbaru belum dibuktikan. Tahun maksimum pada respons tidak menghasilkan rekomendasi sumber utama.
+- Audit meminta ID periode dari `listPeriods`; maksimal tiga halaman metadata (awal dan akhir bila banyak halaman), lalu maksimal tiga periode kandidat. `metadata_complete:false` atau `status:not_verified` menunjukkan batas pemeriksaan. Tidak ada konversi tahun kalender menjadi th_id atau fallback tahun 2024/2023/2022 yang dibekukan. Untuk cakupan lengkap, jelajahi pagination listPeriods dan panggil getData secara eksplisit.
+- `cari_katalog_data` dan `baca_isi_csv` dipertahankan sebagai kompatibilitas klien lama. Utamakan search/fetch untuk JSON terstruktur. `baca_isi_csv` menolak baris_maksimal di luar 1–50; nilai 60 tidak lagi diam-diam dipangkas.
+- Credential BPS dan **SDGs Access** terpisah. Simpan token SDGs hanya bila memakai operasi SDGs Access; API key BPS tidak dipakai sebagai penggantinya. Untuk STDIO, gunakan `BPS_SDGS_TOKEN` terpisah. Endpoint listSdgsGoals menjadi operasi uji SDGs, menggantikan halaman home yang kurang mewakili akses data.
+
+OAuth adalah alur koneksi utama pada halaman Hubungkan AI. Header token manual dan pilihan SSE diletakkan pada pengaturan lanjutan untuk klien yang memerlukannya. Lihat [audit fitur](docs/feature-audit.md) untuk keputusan pemeliharaan dan penghapusan perilaku lama.

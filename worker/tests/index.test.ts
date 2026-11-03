@@ -209,8 +209,8 @@ describe("Cloudflare Worker adapter & Tools", () => {
     const envTanpaKey = { ...mockEnv, BPS_API_KEY: "" };
     const result = await fetchFromBpsDirect("490", "1100", envTanpaKey);
     expect(result).not.toBeNull();
-    expect(result?.analysis.message).toContain("BPS_API_KEY belum dikonfigurasi");
-    expect(result?.diagnostic).toContain("npx wrangler secret put BPS_API_KEY");
+    expect(result?.analysis.message).toContain("Simpan API key BPS");
+    expect(result?.diagnostic).toContain("Credential akun belum tersedia");
   });
 
   it("BPS_INDICATOR_MAP memiliki minimal 10 indikator strategis", () => {

@@ -103,5 +103,33 @@
     "unit_a": "Juta Rupiah",
     "unit_b": "Juta Rupiah",
     "status": "incomparable"
+  },
+  {
+    "title": "Inflasi bulan ke bulan Aceh",
+    "label": "Inflasi tahun ke tahun Aceh",
+    "unit_a": "Persen",
+    "unit_b": "Persen",
+    "status": "incomparable"
+  },
+  {
+    "title": "IHK Aceh (2018=100)",
+    "label": "IHK Aceh (2022=100)",
+    "unit_a": "Indeks",
+    "unit_b": "Indeks",
+    "status": "incomparable"
+  },
+  {
+    "title": "Inflasi Aceh",
+    "label": "Inflasi tahun ke tahun Aceh",
+    "unit_a": "Persen",
+    "unit_b": "Persen",
+    "status": "unknown"
+  },
+  {
+    "title": "Inflasi Aceh",
+    "label": "Indeks Harga Konsumen Aceh",
+    "unit_a": "Persen",
+    "unit_b": "Indeks",
+    "status": "incomparable"
   }
 ]

@@ -1,6 +1,7 @@
 """Allowlisted read-only BPS operations generated from the official OpenAPI spec."""
 import json
 import re
+from difflib import get_close_matches
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -13,7 +14,7 @@ OPERATIONS = REGISTRY["operations"]
 def credential(headers, fallback="", service="bps") -> str:
     """Credentials are request scoped; never persist a visitor's API key."""
     key = headers.get("x-bps-sdgs-token") if service == "sdgs" else None
-    if key is None:
+    if key is None and service != 'sdgs':
         key = headers.get("x-bps-api-key")
     authorization = headers.get("authorization")
     if key is None and authorization is not None:
@@ -29,13 +30,14 @@ def credential(headers, fallback="", service="bps") -> str:
 def catalog(operation="", query="") -> dict:
     if operation:
         if operation not in OPERATIONS:
-            raise ValueError("Operasi tidak dikenal; gunakan bps_endpoints.")
+            names = sorted(OPERATIONS)
+            return {'ok': False, 'error': 'unknown_operation', 'message': 'Nama operasi tidak dikenal. Gunakan nama persis dari valid_operations.', 'operation': operation, 'valid_operations': names, 'suggestions': [name for name in names if operation.lower() in name.lower()][:5] or get_close_matches(operation, names, n=3)}
         spec = OPERATIONS[operation]
-        return {"operation": operation, **spec, "source": REGISTRY["source"]}
+        return {"ok": True, "operation": operation, **spec, "source": REGISTRY["source"]}
     items = [{"operation": name, "summary": op["summary"], "group": op["group"], "credential": op["credential"]}
              for name, op in OPERATIONS.items()
              if query.lower() in (name + " " + op["summary"] + " " + op["group"]).lower()]
-    return {"operations": items, "total": len(items), "source": REGISTRY["source"]}
+    return {"ok": True, "operations": items, "total": len(items), "source": REGISTRY["source"]}
 
 
 def build_request(operation: str, parameters: dict, key: str):

@@ -73,7 +73,7 @@ describe.skipIf(!apiKey)("Live BPS Web API Integration Tests (Cloudflare Worker)
       expect(match).not.toBeNull();
       expect(match?.var).toBe(tc.expectedVar);
 
-      const res = await fetchFromBpsDirect(match!.var, "1100", liveEnv, 5, match?.defaultTh);
+      const res = await fetchFromBpsDirect(match!.var, "1100", liveEnv, 5);
       expect(res).not.toBeNull();
       expect(res?.analysis.status).toBe("valid");
       expect(res?.analysis.rowCount).toBeGreaterThan(0);

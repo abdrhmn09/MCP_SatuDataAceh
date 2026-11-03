@@ -105,7 +105,7 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
             "src.server._unduh_csv",
             new=AsyncMock(side_effect=httpx.HTTPError("Portal offline")),
         ), patch(
-            "src.server._ambil_dari_bps",
+            "src.server._ambil_langsung_dari_bps",
             new=AsyncMock(return_value=None),
         ):
             result = await fetch("dataset-1")
@@ -115,7 +115,7 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.metadata["status"], "failed")
         self.assertIn("Gagal mengunduh", result.text)
 
-    async def test_fetch_gagal_unduh_csv_menggunakan_fallback_bps(self):
+    async def test_fetch_gagal_unduh_csv_tidak_mengganti_sumber_dengan_bps(self):
         import httpx
         katalog = [
             {
@@ -135,14 +135,16 @@ class RemoteToolTests(unittest.IsolatedAsyncioTestCase):
             "src.server._unduh_csv",
             new=AsyncMock(side_effect=httpx.HTTPStatusError("404 Not Found", request=None, response=None)),
         ), patch(
-            "src.server._ambil_dari_bps",
+            "src.server._ambil_langsung_dari_bps",
             new=AsyncMock(return_value=(bps_mock_result, bps_mock_source)),
         ):
             result = await fetch("dataset-1")
 
         self.assertIsInstance(result, FetchOutput)
-        self.assertEqual(result.metadata["source"], "BPS")
-        self.assertEqual(result.text, "| kab | miskin |")
+        self.assertEqual(result.metadata["source"], "Satu Data Aceh")
+        self.assertEqual(result.metadata["status"], "failed")
+        self.assertIn("Gagal mengunduh", result.text)
+        self.assertIn("tidak diganti otomatis", result.metadata["fallback_note"])
 
     async def test_fetch_identifier_kosong_ditolak(self):
         result = await fetch("   ")

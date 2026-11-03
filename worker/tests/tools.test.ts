@@ -31,7 +31,7 @@ it("MCP comparison rejects mismatched units using actual BPS labels and observat
     portalEmpty = true;
     const fallback = await client.callTool({ name: "fetch", arguments: { id } });
     const payload = fallback.structuredContent as { metadata: { source: string; csv_url: string } };
-    expect(payload.metadata.source).toBe("BPS");
+    expect(payload.metadata.source).toBe("Satu Data Aceh");
     expect(payload.metadata.csv_url).not.toContain("test-secret");
     expect(payload.metadata.csv_url).not.toContain("/th/");
     // Initialization and listTools did not consume tool quota, nor were tool calls double-counted.

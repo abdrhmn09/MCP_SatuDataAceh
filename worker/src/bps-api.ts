@@ -7,7 +7,7 @@ export const operations = registry.operations as Record<string, Operation>;
 
 export function credential(headers: Headers, fallback = "", service = "bps"): string {
   let key = service === "sdgs" ? headers.get("X-BPS-SDGS-Token") : null;
-  key = key ?? headers.get("X-BPS-API-Key");
+  if (service !== 'sdgs') key = key ?? headers.get("X-BPS-API-Key");
   const auth = headers.get("Authorization");
   if (key === null && auth !== null) {
     if (!/^Bearer /i.test(auth)) throw new Error("Gunakan Authorization: Bearer API_KEY_BPS.");
@@ -20,12 +20,12 @@ export function credential(headers: Headers, fallback = "", service = "bps"): st
 
 export function endpointCatalog(operation = "", query = "") {
   if (operation) {
-    if (!Object.hasOwn(operations, operation)) throw new Error("Operasi tidak dikenal; gunakan bps_endpoints.");
-    return { operation, ...operations[operation], source: registry.source };
+    if (!Object.hasOwn(operations, operation)) return {ok:false,error:'unknown_operation',message:'Nama operasi tidak dikenal. Gunakan nama persis dari valid_operations.',operation,valid_operations:Object.keys(operations).sort(),suggestions:Object.keys(operations).filter(name=>name.toLowerCase().includes(operation.toLowerCase())).slice(0,5)};
+    return { ok:true, operation, ...operations[operation], source: registry.source };
   }
   const list = Object.entries(operations).filter(([name, op]) => `${name} ${op.summary} ${op.group}`.toLowerCase().includes(query.toLowerCase()))
     .map(([operation, op]) => ({ operation, summary: op.summary, group: op.group, credential: op.credential }));
-  return { operations: list, total: list.length, source: registry.source };
+  return { ok:true, operations: list, total: list.length, source: registry.source };
 }
 
 export function buildRequest(operation: string, parameters: Record<string, unknown>, key: string) {
@@ -55,8 +55,8 @@ export function buildRequest(operation: string, parameters: Record<string, unkno
 }
 
 export async function executeBps(operation: string, parameters: Record<string, unknown>, headers: Headers, fallback = "") {
-  if (!Object.hasOwn(operations, operation)) throw new Error("Operasi tidak dikenal; gunakan bps_endpoints.");
-  const key = credential(headers, fallback, operations[operation].credential);
+  if (!Object.hasOwn(operations, operation)) return endpointCatalog(operation);
+  const key = credential(headers, operations[operation].credential === 'sdgs' ? '' : fallback, operations[operation].credential);
   const request = buildRequest(operation, parameters, key);
   try {
     const text = await readPublicText(request.url, 5 * 1024 * 1024, 30_000, request.headers);

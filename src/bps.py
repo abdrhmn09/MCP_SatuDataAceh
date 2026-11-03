@@ -33,9 +33,8 @@ _catalog = json.loads(_package_files.joinpath("bps_catalog.json").read_text(enco
 # Peta ini digunakan oleh _bps_source() sebagai FALLBACK ketika data Satu Data
 # Aceh tidak tersedia, kosong, atau hanya berisi header.
 # ---------------------------------------------------------------------------
-# PENTING: peta ini hanya boleh berisi pasangan yang sudah diverifikasi terhadap
-# katalog data.json dan respons BPS. Pemetaan yang tidak yakin sengaja dihapus
-# agar tool tidak membandingkan indikator yang berbeda.
+# Peta ini hanya kandidat untuk audit terbatas, bukan bukti kesepadanan atau
+# jaminan ketersediaan terbaru. Label aktual dan dimensi tetap harus diperiksa.
 #
 # Entri berikut pernah ada tetapi dihapus karena tidak lagi cocok dengan
 # dataset portal (identifier dipakai ulang oleh dataset lain):
@@ -143,9 +142,9 @@ def bps_payload_ke_dataframe(payload: dict[str, Any]) -> pd.DataFrame | None:
                             "indikator": var_label,
                         }
                         # Tambahkan kolom turunan hanya jika ada lebih dari 1 kategori
-                        if len(turvar_list) > 1:
+                        if len(turvar_list) > 1 or tv_val != '0' and tv_label:
                             row["kategori"] = tv_label
-                        if len(turtahun_list) > 1:
+                        if len(turtahun_list) > 1 or tt_val != '0':
                             row["periode"] = tt_label
                         row["nilai"] = datacontent[key]
                         if unit:

@@ -13,7 +13,8 @@ import re
 import time
 import socket
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Annotated
 from html.parser import HTMLParser
 from urllib.parse import quote, urljoin, urlparse
 try:
@@ -21,7 +22,8 @@ try:
 except ImportError:
     from mcp.server.mcpserver import MCPServer as FastMCP  # mcp>=2
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from .data_quality import clean_cell, numeric, summarize, audit_coverage
 from starlette.requests import Request
 from starlette.responses import JSONResponse, FileResponse
 
@@ -100,10 +102,8 @@ def _account_key(service='bps'):
         if not valid:
             raise ValueError('Sesi atau token telah dicabut.')
         key = vault.get_key(user['id'],service)
-        if service == 'sdgs' and not key:
-            key = vault.get_key(user['id'],'bps')
         if not key:
-            raise ValueError('Simpan API key BPS di dashboard akun terlebih dahulu.')
+            raise ValueError('Simpan token SDGs terpisah di halaman API key untuk operasi SDGs Access.' if service == 'sdgs' else 'Simpan API key BPS di dashboard akun terlebih dahulu.')
         return key
     return None
 
@@ -130,6 +130,8 @@ class SearchOutput(BaseModel):
     total: int = 0
     offset: int = 0
     next_offset: int | None = None
+    filter_scope: str = 'catalog_metadata'
+    filter_note: str = 'Filter wilayah memeriksa metadata katalog, bukan seluruh baris CSV. Hasil kosong tidak membuktikan wilayah tidak tercakup dalam data.'
 
 
 class FetchOutput(BaseModel):
@@ -139,6 +141,7 @@ class FetchOutput(BaseModel):
     url: str
     metadata: dict[str, object] | None = None
     error: str | None = None
+    data: dict[str, object] | None = None
 
 
 @dataclass
@@ -154,6 +157,10 @@ class CsvReadResult:
     kolom_indikator: str = ""
     satuan: str = ""
     indikator_bps: str = ""
+    data: dict = field(default_factory=dict)
+    quality: dict = field(default_factory=dict)
+    coverage: dict = field(default_factory=dict)
+    freshness: dict = field(default_factory=dict)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -386,9 +393,9 @@ def _url_csv_item(item: dict[str, object]) -> str:
 def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
     """Cari sumber BPS untuk item katalog.
 
-    Lookup priority:
+    Urutan kandidat:
     1. Override dari env BPS_DATASET_MAP (JSON, untuk kustom tanpa deploy ulang)
-    2. BPS_INDICATOR_MAP bawaan dari bps.py (komprehensif, terawat)
+    2. BPS_INDICATOR_MAP bawaan dari bps.py (cakupan terbatas; perlu audit)
     """
     identifier = str(item.get("identifier", "")).strip()
     if not identifier:
@@ -401,7 +408,6 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
             return {
                 "domain": BPS_DOMAIN,
                 "variable": str(env_mapping[identifier]),
-                "defaultTh": "124",
                 "reference_url": "https://webapi.bps.go.id/",
             }
     except (TypeError, ValueError):
@@ -414,14 +420,13 @@ def _bps_source(item: dict[str, object]) -> dict[str, str] | None:
             "domain": BPS_DOMAIN,
             "variable": str(entry["var"]),
             "label": str(entry.get("label", "")),
-            "defaultTh": str(entry.get("defaultTh", "124")),
             "reference_url": "https://webapi.bps.go.id/",
         }
 
     return None
 
 
-def _bps_url(source: dict[str, str], th: str = "124") -> str:
+def _bps_url(source: dict[str, str], th: str = "") -> str:
     return (
         "https://webapi.bps.go.id/v1/api/list/model/data/"
         f"domain/{quote(source['domain'], safe='')}/"
@@ -429,22 +434,6 @@ def _bps_url(source: dict[str, str], th: str = "124") -> str:
         + (f"th/{quote(th, safe='')}/" if th else "")
         + f"key/{quote(_bps_api_key(), safe='')}"
     )
-
-
-def _bps_payload_to_csv(payload: object) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    rows = payload.get("data", [])
-    if isinstance(rows, dict):
-        rows = rows.get("data", [])
-    if not isinstance(rows, list):
-        return ""
-    objects = [row for row in rows if isinstance(row, dict)]
-    if not objects:
-        return ""
-    columns = list(dict.fromkeys(column for row in objects for column in row))
-    frame = pd.DataFrame(objects, columns=columns)
-    return frame.to_csv(index=False)
 
 
 async def _read_bps_payload(url: str, headers: dict | None = None) -> object:
@@ -462,74 +451,33 @@ async def _read_bps_payload(url: str, headers: dict | None = None) -> object:
     return json.loads(b"".join(chunks))
 
 
-async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[str, str]] | None:
-    """Ambil data dari BPS sebagai fallback untuk dataset Satu Data Aceh yang kosong."""
-    source = _bps_source(item)
-    if not source or not _bps_api_key():
-        return None
-    kandidat_th = ["", source.get("defaultTh"), "124", "123", "122"]
-    sudah_dicoba: set[str] = set()
-    for th in kandidat_th:
-        if th is None or th in sudah_dicoba:
-            continue
-        sudah_dicoba.add(th)
-        url = _bps_url(source, th=th)
-        try:
-            teks_csv = bps_payload_ke_csv(await _read_bps_payload(url))
-            if not teks_csv:
-                continue
-            return _analisis_csv(teks_csv, url, 50), source
-        except (
-            httpx.HTTPError,
-            TimeoutError,
-            ValueError,
-            TypeError,
-            KeyError,
-            AttributeError,
-            IndexError,
-        ) as error:
-            logger.warning("Sumber BPS th=%s gagal: %s", th, type(error).__name__)
-    return None
-
-
 async def _ambil_langsung_dari_bps(
-    var_id: str, domain: str = "1100", default_th: str | None = None
+    var_id: str, domain: str = "1100"
 ) -> tuple[CsvReadResult, str] | None:
     """Ambil data langsung dari BPS berdasarkan var_id (tanpa dataset Satu Data Aceh).
 
-    Digunakan oleh tool bandingkan_data untuk mendapatkan angka resmi terbaru dari BPS.
+    Digunakan oleh audit bandingkan_data; periode diperiksa melalui metadata BPS.
     Mengembalikan (CsvReadResult, url_bps) atau None jika gagal / API key tidak ada.
     """
     if not _bps_api_key():
         return None
-    th_candidates = ["", default_th, "124", "123", "122"]
-    sudah_dicoba: set[str] = set()
-    for th in th_candidates:
-        if th is None or th in sudah_dicoba:
-            continue
-        sudah_dicoba.add(th)
-        url = (
-            f"https://webapi.bps.go.id/v1/api/list/model/data/"
-            f"domain/{quote(domain, safe='')}/"
-            f"var/{quote(var_id, safe='')}/"
-            + (f"th/{quote(th, safe='')}/" if th else "")
-            + f"key/{quote(_bps_api_key(), safe='')}"
-        )
+    from .bps_periods import discover_periods
+    key = _bps_api_key()
+    candidates, freshness = await discover_periods(_read_bps_payload, domain, var_id, key)
+    # An unfiltered request is a fallback only; it is never described as the latest release.
+    for th in candidates or ['']:
+        freshness['periods_requested'].append(th or 'unfiltered')
+        url = _bps_url({'domain':domain,'variable':var_id}, th=th)
         try:
-            teks_csv = bps_payload_ke_csv(await _read_bps_payload(url))
-            if not teks_csv:
-                continue
-            return _analisis_csv(teks_csv, url, 50), url
-        except (
-            httpx.HTTPError,
-            TimeoutError,
-            ValueError,
-            TypeError,
-            KeyError,
-            AttributeError,
-            IndexError,
-        ) as error:
-            logger.warning("Pengambilan langsung BPS var=%s th=%s gagal: %s", var_id, th, type(error).__name__)
+            async with asyncio.timeout(8):
+                text = bps_payload_ke_csv(await _read_bps_payload(url))
+            if not text: continue
+            result = _analisis_csv(text, url, 50)
+            if result.status != 'valid' or not result.quality.get('finite_value_count'): continue
+            result.freshness = freshness
+            return result, url
+        except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError, AttributeError, IndexError):
+            logger.warning('Pengambilan BPS gagal untuk periode yang diminta; credential tidak dicatat.')
     return None
 
 
@@ -579,15 +527,16 @@ def _deteksi_kolom_indikator(df: pd.DataFrame) -> tuple[str, str]:
     kandidat_indikator = []
     for col in df.columns:
         col_clean = str(col).lower().strip()
-        if col_clean in kolom_abaikan or col_clean in {"satuan", "unit"}:
+        if col_clean in kolom_abaikan or col_clean in {"satuan", "unit"} or col_clean.startswith(('kode_', 'bps_kode_', 'kemendagri_kode_', 'nama_', 'bps_nama_', 'kemendagri_nama_')) or not len(df[col].dropna()):
             continue
         # Cek apakah tipe data numerik
         if pd.api.types.is_numeric_dtype(df[col]):
             kandidat_indikator.append(str(col))
-        elif df[col].dropna().apply(lambda x: str(x).replace(".", "", 1).replace(",", "", 1).isdigit()).all():
+        elif len(df[col].dropna()) and df[col].dropna().apply(numeric).all():
             kandidat_indikator.append(str(col))
 
-    kolom_terpilih = kandidat_indikator[0] if kandidat_indikator else ""
+    preferred = [str(col) for col in df.columns if str(col).lower().strip() in {'nilai', 'value'}]
+    kolom_terpilih = preferred[0] if len(preferred) == 1 else kandidat_indikator[0] if len(kandidat_indikator) == 1 else ""
     return kolom_terpilih, satuan
 
 
@@ -769,6 +718,20 @@ def _cek_kesepadanan_indikator(
     """
     judul_lower = judul_sda.lower()
     bps_lower = label_bps.lower()
+    def inflation_period(text):
+        for name, pattern in [('yoy',r'y-on-y|yoy|tahun ke tahun'),('mom',r'm-to-m|mtm|bulan ke bulan'),('ytd',r'y-to-d|ytd|tahun kalender')]:
+            if re.search(pattern,text): return name
+        return ''
+    period_a, period_b = inflation_period(judul_lower), inflation_period(bps_lower)
+    if period_a and period_b and period_a != period_b:
+        return False, 'Konsep inflasi tidak sepadan: bulanan, tahun kalender, dan tahun ke tahun berbeda.'
+    if ('inflasi' in judul_lower and ('ihk' in bps_lower or 'indeks harga konsumen' in bps_lower)) or ('inflasi' in bps_lower and ('ihk' in judul_lower or 'indeks harga konsumen' in judul_lower)):
+        return False, 'Indeks Harga Konsumen dan laju inflasi bukan ukuran yang sama.'
+    base_a, base_b = (re.search(r'\b((?:19|20)\d{2})\s*=\s*100',text) for text in (judul_lower,bps_lower))
+    if base_a and base_b and base_a[1] != base_b[1]:
+        return False, 'Tahun dasar indeks tidak sepadan.'
+    if bool(period_a) != bool(period_b) or bool(base_a) != bool(base_b):
+        return False, 'Kesepadanan belum dapat dipastikan: konsep periode atau tahun dasar belum lengkap.'
 
     # 1. Cek tingkat wilayah (Nasional vs Daerah Aceh)
     if ("nasional" in judul_lower) != ("nasional" in bps_lower) or ("indonesia" in judul_lower) != ("indonesia" in bps_lower):
@@ -884,7 +847,8 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
         return CsvReadResult("html", "", 0, 0, url, "Sumber mengembalikan halaman HTML, bukan CSV.")
 
     try:
-        df = pd.read_csv(StringIO(teks_csv))
+        df = pd.read_csv(StringIO(teks_csv), dtype=object, keep_default_na=False)
+        df = df.apply(lambda column: column.map(clean_cell))
     except pd.errors.EmptyDataError:
         return CsvReadResult("empty", "", 0, 0, url, "File CSV tidak berisi data.")
     except (pd.errors.ParserError, UnicodeDecodeError, ValueError):
@@ -908,7 +872,10 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
         nilai_indikator = df["indikator"].dropna().unique()
         if len(nilai_indikator) == 1:
             indikator_bps = str(nilai_indikator[0])
-    preview = df.head(baris_maksimal).to_markdown(index=False)
+    data, quality, coverage = summarize(df, kolom_ind, baris_maksimal)
+    display_columns = [col for col in df.columns if not df[col].isna().all() or str(col) == kolom_ind]
+    quality['preview_omitted_empty_columns'] = [str(col) for col in df.columns if col not in display_columns]
+    preview = df[display_columns or list(df.columns)].head(baris_maksimal).fillna('—').to_markdown(index=False, disable_numparse=True)
     return CsvReadResult(
         "valid",
         preview,
@@ -921,6 +888,9 @@ def _analisis_csv(teks_csv: str, url: str, baris_maksimal: int) -> CsvReadResult
         kolom_ind,
         satuan,
         indikator_bps,
+        data,
+        quality,
+        coverage,
     )
 
 
@@ -949,10 +919,11 @@ async def health(_: Request) -> JSONResponse:
 
 async def _execute_bps(operation: str, parameters: dict, headers) -> dict:
     if operation not in bps_api.OPERATIONS:
-        raise ValueError("Operasi tidak dikenal; gunakan bps_endpoints.")
+        return bps_api.catalog(operation)
     key = _account_key(bps_api.OPERATIONS[operation]["credential"])
     if key is None:
-        key = bps_api.credential(headers, BPS_API_KEY, bps_api.OPERATIONS[operation]["credential"])
+        service = bps_api.OPERATIONS[operation]["credential"]
+        key = bps_api.credential(headers, os.getenv('BPS_SDGS_TOKEN','') if service == 'sdgs' else BPS_API_KEY, service)
     url, public_url, upstream_headers = bps_api.build_request(operation, parameters, key)
     try:
         payload = await _read_bps_payload(url, upstream_headers)
@@ -964,15 +935,15 @@ async def _execute_bps(operation: str, parameters: dict, headers) -> dict:
 
 
 @mcp.tool()
-async def bps_endpoints(operation: str = "", query: str = "") -> dict:
+async def bps_endpoints(operation: str = "", query: str = "") -> dict[str, object]:
     """Daftar 59 operasi resmi BPS: domain, data dinamis/statis, publikasi, sensus, perdagangan, SDGs. Isi operation untuk skema parameter lengkap. Tidak memerlukan key."""
     if not await _rate_limiter.allow():
-        return {"error": "rate_limited"}
+        return {"ok": False, "error": "rate_limited"}
     return bps_api.catalog(operation, query)
 
 
 @mcp.tool()
-async def bps_request(operation: str, parameters: dict[str, str | int] | None = None) -> dict:
+async def bps_request(operation: str, parameters: dict[str, str | int] | None = None) -> dict[str, object]:
     """Jalankan operasi read-only BPS pada semua domain. Temukan operation dan parameter melalui bps_endpoints. Key berasal dari header koneksi, bukan argumen tool. Pertahankan pagination dan dimensi respons asli."""
     if not await _rate_limiter.allow():
         return {"error": "rate_limited"}
@@ -983,12 +954,13 @@ async def bps_request(operation: str, parameters: dict[str, str | int] | None = 
 
 
 @mcp.tool()
-async def bps_check_key(service: str = "bps") -> dict:
-    """Validasi credential koneksi ke BPS atau SDGs tanpa menampilkan key. Tidak menyimpan credential pengguna."""
+async def bps_check_key(service: str = "bps") -> dict[str, object]:
+    """Uji credential tersimpan pada satu endpoint BPS/SDGs. Keberhasilan tidak menjamin semua operasi atau izin data tersedia. Tidak menampilkan key."""
     if service not in {"bps", "sdgs"}:
         return {"ok": False, "error": "service harus bps atau sdgs"}
-    result = await bps_request("listDomains" if service == "bps" else "getSdgsHome", {"type": "all"} if service == "bps" else {})
-    return {"ok": result.get("ok", False), "service": service, "message": "Credential diterima BPS." if result.get("ok") else "Credential belum dapat diverifikasi; periksa key atau koneksi BPS."}
+    operation = 'listDomains' if service == 'bps' else 'listSdgsGoals'
+    result = await bps_request(operation, {'type':'all'} if service == 'bps' else {})
+    return {'ok':result.get('ok',False),'service':service,'tested_operation':operation,'verification_scope':'single_endpoint','message':'Permintaan uji berhasil. Akses ke operasi lain belum diuji.' if result.get('ok') else 'Permintaan uji belum berhasil; periksa credential layanan ini dan koneksi BPS.'}
 
 
 @mcp.custom_route("/", methods=["GET"], include_in_schema=False)
@@ -1009,7 +981,8 @@ async def app_styles(_: Request):
 @mcp.custom_route("/api/bps/endpoints", methods=["GET"], include_in_schema=False)
 async def bps_endpoint_catalog(request: Request):
     try:
-        return JSONResponse(bps_api.catalog(request.query_params.get("operation", ""), request.query_params.get("query", "")), headers={"Cache-Control": "no-store"})
+        result=bps_api.catalog(request.query_params.get("operation", ""), request.query_params.get("query", ""))
+        return JSONResponse(result,status_code=200 if result['ok'] else 400,headers={"Cache-Control": "no-store"})
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
@@ -1038,7 +1011,7 @@ async def bps_browser_request(request: Request):
 
 @mcp.tool()
 async def search(query: str, wilayah: str = "", produsen: str = "", limit: int = 5, offset: int = 0) -> SearchOutput:
-    """Mencari dataset Aceh dan mengembalikan hasil dengan URL yang dapat dikutip."""
+    """Cari dataset Aceh dengan pagination. wilayah/produsen memfilter metadata katalog, bukan baris CSV; hasil kosong tidak membuktikan suatu wilayah tidak memiliki data. Gunakan fetch(id) untuk melihat cakupan baris."""
     if not await _rate_limiter.allow():
         return SearchOutput(
             results=[],
@@ -1075,7 +1048,7 @@ async def search(query: str, wilayah: str = "", produsen: str = "", limit: int =
 
 @mcp.tool()
 async def fetch(id: str) -> FetchOutput:
-    """Mengambil isi ringkas CSV dataset berdasarkan identifier hasil search."""
+    """Baca dataset portal dari search: tabel Markdown dan data.rows JSON (maksimal 50), null untuk nilai hilang, metadata kelengkapan/cakupan. Tidak mengganti sumber dengan BPS bila portal gagal; gunakan bps_request secara eksplisit."""
     if not await _rate_limiter.allow():
         return FetchOutput(
             id=str(id or "").strip(),
@@ -1140,14 +1113,6 @@ async def fetch(id: str) -> FetchOutput:
 
     source = "Satu Data Aceh"
     reference_source = _halaman_dataset(item)
-    if result.status != "valid":
-        bps_result = await _ambil_dari_bps(item)
-        if bps_result:
-            result, bps_source = bps_result
-            source = "BPS"
-            reference_source = bps_source["reference_url"]
-            csv_url = result.source_url
-
     text = result.preview if result.status == "valid" else result.message
     publisher = item.get("publisher", {})
     period_display = (
@@ -1160,6 +1125,7 @@ async def fetch(id: str) -> FetchOutput:
         title=str(item.get("title", "Dataset Aceh")),
         text=text,
         url=_halaman_dataset(item) or csv_url,
+        data=result.data or None,
         metadata={
             "publisher": publisher,
             "catalog": catalog_status(),
@@ -1180,6 +1146,9 @@ async def fetch(id: str) -> FetchOutput:
             "row_count": result.row_count,
             "column_count": result.column_count,
             "message": result.message,
+            "quality": result.quality,
+            "coverage": result.coverage,
+            "fallback_note": "Sumber portal tidak diganti otomatis. Gunakan bps_endpoints dan bps_request untuk data BPS.",
         },
     )
 
@@ -1187,7 +1156,7 @@ async def fetch(id: str) -> FetchOutput:
 async def cari_katalog_data(kata_kunci: str) -> str:
     """
     Mencari dataset publik di Portal Satu Data Aceh berdasarkan kata kunci.
-    Gunakan alat ini setiap kali pengguna meminta informasi statistik atau data dari Aceh.
+    Kompatibilitas klien lama; untuk pencarian baru gunakan search yang mendukung filter dan pagination.
     
     Args:
         kata_kunci: Kata atau frasa pencarian (contoh: "kemiskinan", "penduduk", "sekolah").
@@ -1233,7 +1202,7 @@ async def cari_katalog_data(kata_kunci: str) -> str:
     return "Berikut adalah hasil pencarian teratas:\n\n" + "\n\n".join(hasil_pencarian)
 
 @mcp.tool()
-async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
+async def baca_isi_csv(url: str, baris_maksimal: Annotated[int, Field(ge=1, le=50)] = 20) -> str:
     """
     Mengunduh dan membaca isi data numerik dari file CSV berdasarkan URL.
     Gunakan alat ini jika Anda (AI) sudah mendapatkan URL CSV dari alat pencarian, 
@@ -1249,7 +1218,8 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
         return "URL CSV harus menggunakan HTTPS dan alamat publik yang valid."
     if isinstance(baris_maksimal, bool) or not isinstance(baris_maksimal, int):
         return "baris_maksimal harus berupa bilangan bulat antara 1 dan 50."
-    baris_maksimal = max(1, min(baris_maksimal, 50))
+    if not 1 <= baris_maksimal <= 50:
+        return "baris_maksimal harus berupa bilangan bulat antara 1 dan 50."
 
     try:
         result = await _unduh_csv(url, baris_maksimal)
@@ -1259,8 +1229,7 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
                 f"File CSV pada tautan tersebut memiliki struktur kolom ({result.column_count} kolom) "
                 f"tetapi belum memiliki baris data/observasi sama sekali.\n"
                 f"- URL: {url}\n"
-                f"- Silakan gunakan dataset alternatif di portal atau gunakan tool `bandingkan_data` "
-                f"untuk menarik data resmi dari BPS."
+                f"- Cari dataset alternatif dengan search atau ambil data BPS melalui bps_endpoints dan bps_request."
             )
         if result.status != "valid":
             return f"Data tidak tersedia ({result.status}): {result.message}"
@@ -1272,7 +1241,8 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
             f"{f', rentang observasi: {result.tahun_min}–{result.tahun_max}' if result.tahun_min else ''}"
             f"{info_indikator}{info_satuan})*"
         )
-        return result.preview + info_tambahan
+        missing = result.quality.get('missing_cells', 0)
+        return result.preview + info_tambahan + f"\n\nNilai kosong ditampilkan sebagai —; {missing} sel kosong pada seluruh CSV. Untuk JSON terstruktur gunakan fetch(id)."
             
     except httpx.HTTPError:
         return "Gagal mengunduh file CSV dari URL tersebut."
@@ -1284,17 +1254,7 @@ async def baca_isi_csv(url: str, baris_maksimal: int = 20) -> str:
 
 @mcp.tool()
 async def bandingkan_data(indikator: str) -> str:
-    """
-    Mengambil data dari DUA sumber (Satu Data Aceh dan BPS) sekaligus dan
-    membandingkan mana yang lebih valid dan terbaru.
-
-    Gunakan alat ini ketika pengguna meminta data statistik resmi Aceh dan Anda
-    ingin memastikan angka yang paling akurat dan mutakhir.
-
-    Args:
-        indikator: Nama indikator statistik (contoh: "kemiskinan", "IPM", "pengangguran",
-                   "inflasi", "PDRB", "gini", "padi", "sayur").
-    """
+    """Audit terbatas dua sumber: konsep, satuan, wilayah, subperiode, kategori, nilai hilang, dan tahun yang berhasil dibaca. Tidak memilih sumber paling valid/terbaru atau membuktikan kesamaan angka. Untuk BPS di luar pemetaan kandidat gunakan bps_endpoints dan bps_request."""
     if not await _rate_limiter.allow():
         return "Batas permintaan tercapai. Coba lagi beberapa saat."
 
@@ -1307,7 +1267,7 @@ async def bandingkan_data(indikator: str) -> str:
 
     # ── Cari di Satu Data Aceh ──────────────────────────────────────────────
     hasil_sda = _cocokkan_dataset(katalog, indikator)
-    # Prioritaskan dataset yang sudah diverifikasi punya pasangan BPS.
+    # Prioritaskan dataset dengan kandidat pemetaan BPS, tanpa menganggapnya sudah sepadan.
     hasil_sda.sort(key=lambda item: 0 if _bps_source(item) else 1)
 
     # Jika tidak ada satu pun kandidat teratas yang punya pasangan BPS, cari
@@ -1396,7 +1356,6 @@ async def bandingkan_data(indikator: str) -> str:
             var_info = {
                 "var": bps_source_katalog["variable"],
                 "label": bps_source_katalog.get("label", ""),
-                "defaultTh": bps_source_katalog.get("defaultTh", "124"),
             }
     if not var_info:
         var_info = cari_var_bps_dari_kata_kunci(indikator)
@@ -1410,7 +1369,7 @@ async def bandingkan_data(indikator: str) -> str:
             f"domain/{BPS_DOMAIN}/var/{var_info['var']}/key/***"
         )
         bps_result_tuple = await _ambil_langsung_dari_bps(
-            var_info["var"], BPS_DOMAIN, var_info.get("defaultTh")
+            var_info["var"], BPS_DOMAIN
         )
         if bps_result_tuple:
             result_bps, bps_url_actual = bps_result_tuple
@@ -1429,7 +1388,7 @@ async def bandingkan_data(indikator: str) -> str:
                 bps_teks = result_bps.message
         elif not _bps_api_key():
             bps_status = "api_key_tidak_ada"
-            bps_teks = "BPS API key belum dikonfigurasi. Hubungi pengelola server."
+            bps_teks = "Simpan API key BPS pada halaman API key akun Anda."
         else:
             bps_status = "failed"
             bps_teks = "Gagal mengambil data dari BPS API."
@@ -1441,7 +1400,7 @@ async def bandingkan_data(indikator: str) -> str:
         )
 
     bagian.append(
-        f"## Sumber 2: BPS Web API (Domain {BPS_DOMAIN} – Provinsi Aceh)\n"
+        f"## Sumber 2: BPS Web API (Domain {BPS_DOMAIN})\n"
         f"- **Status Data**: `{bps_status}` | **Baris Observasi**: {bps_baris} | **Rentang Tahun Observasi**: {bps_periode}\n"
         f"- **Indikator BPS**: {label_bps} (var: {var_info['var'] if var_info else '-'})\n"
         f"- **Endpoint**: `{bps_url_tampil}`\n\n"
@@ -1458,57 +1417,28 @@ async def bandingkan_data(indikator: str) -> str:
         result_bps.satuan if result_bps else "",
     )
 
-    if not is_sepadan and alasan_kesepadanan.startswith("Kesepadanan belum") and sda_status == "valid" and bps_status == "valid":
-        rekomendasi = f"⚠️ **Kesepadanan Belum Dapat Dipastikan**: {alasan_kesepadanan}"
-    elif not is_sepadan and sda_status == "valid" and bps_status == "valid":
-        rekomendasi = (
-            f"⚠️ **Incomparable (Tidak Sepadan Secara Langsung)**\n"
-            f"- **Catatan Metodologi**: {alasan_kesepadanan}\n"
-            f"- Data Satu Data Aceh ('{sda_judul}') dan data BPS ('{label_bps}') tidak mengukur unit/cakupan yang sama, "
-            f"sehingga perbandingan angka absolut tidak dapat dilakukan secara langsung.\n"
-            f"- **Rekomendasi**: Gunakan BPS Web API untuk data agregat/komposit wilayah Provinsi Aceh, "
-            f"atau gunakan Satu Data Aceh jika Anda secara khusus membutuhkan dimensi disagregasi/sektoral tersebut."
-        )
-    elif sda_status == "valid" and bps_status == "valid":
-        max_sda = int(result_sda.tahun_max) if result_sda and result_sda.tahun_max.isdigit() else 0
-        max_bps = int(result_bps.tahun_max) if result_bps and result_bps.tahun_max.isdigit() else 0
-
-        if not max_sda or not max_bps:
-            rekomendasi = "Tahun observasi belum cukup untuk menentukan sumber terbaru."
-        elif max_bps > max_sda and max_bps > 0:
-            rekomendasi = (
-                f"✅ **BPS** menyediakan data observasi terbaru (tahun **{max_bps}**), "
-                f"sedangkan **Satu Data Aceh** menyediakan data hingga tahun **{max_sda}** "
-                f"({result_sda.row_count} baris observasi, rentang {sda_periode}).\n"
-                f"- **Rekomendasi**: Gunakan **BPS** untuk angka rilis termutakhir dan **Satu Data Aceh** untuk analisis deret waktu historis."
-            )
-        elif max_sda > max_bps and max_sda > 0:
-            rekomendasi = (
-                f"✅ **Satu Data Aceh** menyediakan data observasi hingga tahun **{max_sda}** "
-                f"(lebih baru dibanding BPS tahun **{max_bps}**).\n"
-                f"- **Rekomendasi**: Gunakan data portal Satu Data Aceh sebagai referensi utama."
-            )
+    coverage_ok, coverage_reason = audit_coverage(result_sda, result_bps)
+    if sda_status == 'valid' and bps_status == 'valid':
+        if not is_sepadan:
+            label = 'Kesepadanan Belum Dapat Dipastikan' if alasan_kesepadanan.startswith('Kesepadanan belum') else 'Incomparable (Tidak Sepadan Secara Langsung)'
+            rekomendasi = f'**{label}**: {alasan_kesepadanan}'
+        elif not coverage_ok:
+            rekomendasi = f'**Kesepadanan observasi belum dapat dipastikan**: {coverage_reason}'
         else:
-            rekomendasi = (
-                f"✅ Kedua sumber menyediakan data yang sepadan dengan tahun observasi setara (**{max_bps or max_sda or 'tidak diketahui'}**).\n"
-                f"- **Rekomendasi**: Angka BPS dan Satu Data Aceh dapat saling melengkapi."
-            )
-    elif bps_status == "valid":
-        alasan_sda = "hanya berisi header tanpa baris data" if sda_status == "header_only" else "tidak tersedia"
-        rekomendasi = (
-            f"✅ **BPS Web API** merupakan satu-satunya sumber dengan data valid untuk indikator ini "
-            f"(tahun observasi {bps_periode}).\n"
-            f"- Dataset di Portal Satu Data Aceh {alasan_sda}."
-        )
-    elif sda_status == "valid":
-        rekomendasi = (
-            f"✅ Hanya **Satu Data Aceh** yang memiliki data valid untuk indikator ini (tahun observasi {sda_periode}).\n"
-            f"- Gunakan data portal Satu Data Aceh."
-        )
+            rekomendasi = f'**Pemeriksaan awal sesuai**: {coverage_reason}'
     else:
-        rekomendasi = "⚠️ Kedua sumber tidak memiliki data yang valid untuk indikator ini. Periksa ketersediaan dataset di portal atau verifikasi BPS API Key Anda."
+        rekomendasi = 'Kesepadanan belum dapat dinilai karena salah satu atau kedua sumber tidak berhasil dibaca.'
+    for name, result in [('Satu Data Aceh',result_sda),('BPS',result_bps)]:
+        if result:
+            latest = result.quality.get('latest_value_year') or 'belum diketahui'
+            missing = result.quality.get('missing_value_count')
+            rekomendasi += f'\n- {name}: tahun terakhir dengan nilai indikator yang dapat dibaca: {latest}; nilai indikator kosong: {missing if missing is not None else "kolom nilai belum pasti"}.'
+    if result_bps:
+        freshness = result_bps.freshness
+        rekomendasi += f'\n- Pemeriksaan periode BPS: {freshness.get("status","not_verified")}; kelengkapan metadata periode: {freshness.get("metadata_complete",False)}. Gunakan listPeriods/getData melalui bps_request untuk memeriksa periode secara eksplisit.'
+    rekomendasi += '\n\nStatus valid hanya berarti CSV dapat dibaca, bukan bukti validitas statistik. Audit ini hanya mencakup respons yang berhasil dibaca. Kesamaan angka per wilayah/periode dan kesetaraan metodologi belum dibuktikan; tidak ada sumber utama yang dipilih otomatis. Tahun maksimum tidak membuktikan rilis terbaru yang tersedia saat ini.'
 
-    kesimpulan = f"---\n## Kesimpulan Perbandingan\n{rekomendasi}"
+    kesimpulan = f"---\n## Hasil Audit Terbatas\n{rekomendasi}"
     return "\n\n---\n\n".join(bagian) + "\n\n" + kesimpulan
 
 
