@@ -23,7 +23,7 @@ export function redactSecrets(value: string): string {
 }
 
 /** One deadline covers headers and streamed body; redirects are deliberately rejected. */
-export async function readPublicText(url: string, maxBytes: number, timeoutMs = 30_000): Promise<string> {
+export async function readPublicText(url: string, maxBytes: number, timeoutMs = 30_000, headers: Record<string, string> = {}): Promise<string> {
   if (!isPublicHttpsUrl(url)) throw new Error("URL harus menggunakan HTTPS dan alamat publik.");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -31,7 +31,7 @@ export async function readPublicText(url: string, maxBytes: number, timeoutMs = 
   try {
     const response = await fetch(url, {
       redirect: "error", signal: controller.signal,
-      headers: { Accept: "text/csv, application/json, text/html, text/plain" },
+      headers: { Accept: "text/csv, application/json, text/html, text/plain", ...headers },
     });
     if (!response.ok) throw new Error(`Sumber mengembalikan HTTP ${response.status}.`);
     if (Number(response.headers.get("content-length")) > maxBytes) throw new Error("Respons melebihi batas ukuran.");

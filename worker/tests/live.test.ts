@@ -80,7 +80,7 @@ describe.skipIf(!apiKey)("Live BPS Web API Integration Tests (Cloudflare Worker)
     }
   }, 30000);
 
-  it("Server MCP Worker berhasil diinisialisasi dan mendaftarkan 5 tool", () => {
+  it("Server MCP Worker berhasil diinisialisasi dan mendaftarkan 8 tool", () => {
     const server = createServer(liveEnv);
     expect(server).toBeDefined();
   });

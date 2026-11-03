@@ -23,9 +23,65 @@ https://www.mcpsatudataaceh.web.id/sse
 
 ---
 
+## Web API BPS lengkap & API key pengguna
+
+Tiga tool baru tersedia pada Python dan Worker:
+
+| Tool | Fungsi |
+| --- | --- |
+| `bps_endpoints(operation="", query="")` | Daftar 59 operasi dari spesifikasi resmi; isi `operation` untuk melihat parameter, tipe, enum, dan parameter wajib. Tidak memerlukan key. |
+| `bps_request(operation, parameters={})` | Jalankan satu operasi read-only dengan parameter path/query tervalidasi. Respons mempertahankan struktur JSON, pagination, kategori, dan dimensi sumber. |
+| `bps_check_key(service="bps")` | Validasi credential melalui BPS; pilih `sdgs` untuk layanan SDGs Access. |
+
+Cakupan mengikuti [OpenAPI resmi BPS](https://webapi.bps.go.id/documentation/openapi.yaml): domain, subjek, variabel dan dimensi, periode, data dinamis, tabel statis/CSA, siaran pers, publikasi, indikator strategis, infografis, berita, glosarium, ekspor-impor, klasifikasi KBLI/KBKI, sensus, Yearbook Dataset, SDGs/SDDS, dan SDGs Access. Registry berada di `src/bps_operations.json`; pembaruan layanan BPS perlu disinkronkan ke registry. Generator `scripts/update_bps_registry.py` menerima berkas OpenAPI YAML yang telah diunduh (dependensi development: PyYAML); tinjau perubahan skema dan jalankan tes kedua runtime sebelum deployment. Akses tidak menjamin seluruh data BPS diterbitkan melalui API atau tersedia pada setiap domain/key.
+
+Contoh urutan pemanggilan:
+
+```json
+{"operation":"listVariables","parameters":{"domain":"1100","page":1}}
+```
+
+Untuk data dinamis, temukan `var` melalui `listVariables`, dimensi lewat `listVerticalVariables`/`listDerivedVariables`, dan kode periode lewat `listPeriods`. Kemudian gunakan `getData` dengan `domain`, `var`, dan `th` sesuai skema. `th` adalah kode periode BPS, bukan tahun kalender. Untuk domain nasional gunakan `0000`, atau temukan domain melalui `listDomains` dengan `type: "all"`. Ikuti metadata pagination untuk halaman selanjutnya; tidak ada unduhan semua halaman secara otomatis.
+
+### Credential per pengguna
+
+Pada pengaturan koneksi MCP, kirim salah satu header berikut melalui HTTPS:
+
+```text
+Authorization: Bearer YOUR_BPS_API_KEY
+```
+
+atau `X-BPS-API-Key: YOUR_BPS_API_KEY`. SDGs Access memakai `X-BPS-SDGS-Token: YOUR_SDGS_TOKEN`; jika tidak diberikan, key BPS koneksi digunakan sebagai Token sesuai dokumentasi layanan. Credential ini untuk otorisasi upstream BPS, bukan login pengguna atau access token OAuth server MCP. Tidak ada pendaftaran akun lokal atau penyimpanan key pengunjung.
+
+Header pengguna mengalahkan `BPS_API_KEY` operator; key yang tidak valid tidak dialihkan ke key operator. Permintaan pengguna dipisahkan tanpa mengubah environment global. Tool lama yang menggunakan BPS juga menghormati key koneksi pengguna. STDIO menggunakan `BPS_API_KEY` di environment. Pada SSE, kirim header saat membuka `/sse` dan POST `/messages/`; koneksi SSE yang sudah dibuka perlu dibuat ulang saat mengganti key. Klien harus mendukung header HTTP kustom atau Bearer manual; alur OAuth tidak ditambahkan.
+
+### Landing page & deployment VPS
+
+Landing page baru di `public/index.html` menyediakan explorer operasi BPS, parameter JSON, status layanan sebenarnya, dan panduan koneksi. Key berada pada formulir/memori halaman, dikirim ke backend melalui header, lalu diteruskan ke BPS; tidak ditulis ke cookie, localStorage, URL browser, atau argumen tool. Respons menyamarkan credential yang di-echo upstream. Jangan menyimpan header credential di log reverse proxy atau tracing produksi.
+
+Python menyajikan halaman `/` dari salinan paket `src/static/index.html`; kedua berkas harus tetap identik. Worker menyajikan `public/` melalui binding Assets. API browser tersedia pada `GET /api/bps/endpoints` dan `POST /api/bps`. POST browser selalu membutuhkan key pengguna dan tidak meminjam key operator.
+
+Untuk Nginx VPS, gunakan contoh lengkap `deploy/nginx.conf`, yang meneruskan `/api/bps`, `/sse`, `/messages/`, dan `/mcp`, beserta header credential dan preflight. Pilih transport yang cocok dengan runtime; Python tidak otomatis menjalankan SSE dan Streamable HTTP sekaligus. Salin halaman statis dan konfigurasi hanya setelah menyesuaikan lokasi proyek/sertifikat:
+
+```bash
+sudo install -m 644 public/index.html /var/www/mcpsatudataaceh.web.id/index.html
+sudo install -m 644 deploy/nginx.conf /etc/nginx/sites-available/mcpsatudataaceh.web.id
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Pastikan environment aplikasi mencakup:
+
+```dotenv
+MCP_ALLOWED_ORIGINS=https://mcpsatudataaceh.web.id,https://www.mcpsatudataaceh.web.id,https://mcpplaygroundonline.com
+```
+
+Restart/recreate aplikasi setelah pembaruan kode dan environment. Preview lokal: `MCP_TRANSPORT=sse MCP_PORT=8765 python3 -m src.server`, lalu buka `http://127.0.0.1:8765`. Jangan gunakan key asli pada koneksi HTTP publik. Respons upstream dibatasi 5 MiB/30 detik; key, kuota, lisensi, ketersediaan data, dan gangguan BPS tetap berlaku. Perbandingan statistik lama tetap terbatas pada indikator kurasi, meskipun pengambilan umum mendukung 59 operasi.
+
+---
+
 ## Runtime dan endpoint
 
-Repositori menyediakan dua runtime dengan lima tool yang sama:
+Repositori menyediakan dua runtime dengan delapan tool yang sama:
 
 | Runtime | Transport | Endpoint |
 | --- | --- | --- |
@@ -99,7 +155,7 @@ Image Docker menyertakan snapshot `data.json` sebagai fallback dan berjalan seba
 
 ## 🛠️ Daftar Tools yang Tersedia
 
-Server menyediakan 5 tool terstandar:
+Server menyediakan 8 tool:
 
 | Tool | Fungsi Utama | Parameter Input |
 | :--- | :--- | :--- |

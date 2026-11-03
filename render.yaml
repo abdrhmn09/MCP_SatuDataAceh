@@ -14,4 +14,4 @@ services:
       - key: MCP_ALLOWED_HOSTS
         value: satu-data-aceh-mcp.onrender.com,www.mcpsatudataaceh.web.id,mcpsatudataaceh.web.id
       - key: MCP_ALLOWED_ORIGINS
-        value: https://satu-data-aceh-mcp.onrender.com,https://www.mcpsatudataaceh.web.id,https://mcpsatudataaceh.web.id
+        value: https://satu-data-aceh-mcp.onrender.com,https://www.mcpsatudataaceh.web.id,https://mcpsatudataaceh.web.id,https://mcpplaygroundonline.com

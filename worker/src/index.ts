@@ -1,3 +1,4 @@
+import { credential, endpointCatalog, executeBps, operations } from "./bps-api";
 import searchSynonyms from "../../src/search_rules.json";
 import { isPublicHttpsUrl, readPublicText, redactSecrets } from "./http";
 import { parseCsv, encodeCsv, observationMetadata } from "./csv";
@@ -16,11 +17,13 @@ import {
 export { bpsPayloadToText, parseBpsDiagnostics, cariVarBpsDariKataKunci } from "./bps";
 
 export interface Env {
+  ASSETS?: { fetch(request: Request): Promise<Response> };
   CATALOG_URL: string;
   DATA_YEAR: string;
   CATALOG_TTL_SECONDS: string;
   MAX_REQUESTS_PER_MINUTE: string;
   BPS_API_KEY?: string;
+  BPS_SDGS_TOKEN?: string;
   BPS_DOMAIN?: string;
   BPS_DATASET_MAP?: string;
 }
@@ -482,6 +485,35 @@ export function createServer(env: Env, clientKey = "local"): McpServer {
     version: "0.2.0",
   });
 
+  const response = (payload: Record<string, unknown>) => ({ content: [{ type: "text" as const, text: JSON.stringify(payload) }], structuredContent: payload });
+  server.registerTool("bps_endpoints", {
+    description: "Daftar 59 operasi resmi BPS pada semua domain; isi operation untuk skema parameter lengkap. Tidak memerlukan API key.",
+    inputSchema: { operation: z.string().max(100).default(""), query: z.string().max(200).default("") },
+  }, async ({ operation, query }) => {
+    if (!allowRequest(env, clientKey)) return response({ error: "rate_limited" });
+    return response(endpointCatalog(operation, query));
+  });
+  server.registerTool("bps_request", {
+    description: "Jalankan operasi read-only BPS pada semua domain. Cari operation/parameters melalui bps_endpoints. Key berasal dari header koneksi, bukan argumen tool. Respons mempertahankan pagination dan dimensi BPS.",
+    inputSchema: { operation: z.string().max(100), parameters: z.record(z.union([z.string().max(500), z.number().int()])).default({}) },
+  }, async ({ operation, parameters }) => {
+    if (!allowRequest(env, clientKey)) return response({ error: "rate_limited" });
+    try { return response(await executeBps(operation, parameters, env.BPS_SDGS_TOKEN ? new Headers({ "X-BPS-SDGS-Token": env.BPS_SDGS_TOKEN }) : new Headers(), env.BPS_API_KEY)); }
+    catch (error) { return response({ ok: false, message: error instanceof Error ? error.message : "Permintaan tidak valid." }); }
+  });
+  server.registerTool("bps_check_key", {
+    description: "Validasi credential koneksi ke BPS atau SDGs tanpa menyimpan atau menampilkan key.",
+    inputSchema: { service: z.enum(["bps", "sdgs"]).default("bps") },
+  }, async ({ service }) => {
+    if (!allowRequest(env, clientKey)) return response({ error: "rate_limited" });
+    try {
+      const headers = new Headers();
+      if (env.BPS_SDGS_TOKEN) headers.set("X-BPS-SDGS-Token", env.BPS_SDGS_TOKEN);
+      const result = await executeBps(service === "bps" ? "listDomains" : "getSdgsHome", service === "bps" ? { type: "all" } : {}, headers, env.BPS_API_KEY);
+      return response({ ok: result.ok, service, message: result.ok ? "Credential diterima BPS." : "Credential belum dapat diverifikasi." });
+    } catch { return response({ ok: false, service, message: "Credential belum tersedia atau tidak valid." }); }
+  });
+
   // ── 1. Tool: search ───────────────────────────────────────────────────────
   server.registerTool(
     "search",
@@ -861,7 +893,10 @@ export function createServer(env: Env, clientKey = "local"): McpServer {
 }
 
 async function handleMcp(request: Request, env: Env): Promise<Response> {
-  const server = createServer(env, request.headers.get("CF-Connecting-IP") || "local");
+  const scopedEnv = { ...env };
+  if (request.headers.has("X-BPS-API-Key") || request.headers.has("Authorization")) scopedEnv.BPS_API_KEY = credential(request.headers);
+  if (request.headers.has("X-BPS-SDGS-Token")) scopedEnv.BPS_SDGS_TOKEN = credential(request.headers, "", "sdgs");
+  const server = createServer(scopedEnv, request.headers.get("CF-Connecting-IP") || "local");
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await server.connect(transport);
   return transport.handleRequest(request);
@@ -873,6 +908,24 @@ export default {
     if (url.pathname === "/health" && request.method === "GET") {
       return Response.json({ status: "ok", service: "satu-data-aceh-mcp-worker", catalog: catalogStatus(env) });
     }
+    if (url.pathname === "/api/bps/endpoints" && request.method === "GET") {
+      try { return Response.json(endpointCatalog(url.searchParams.get("operation") || "", url.searchParams.get("query") || ""), { headers: { "Cache-Control": "no-store" } }); }
+      catch { return Response.json({ error: "Operasi tidak dikenal." }, { status: 400 }); }
+    }
+    if (url.pathname === "/api/bps" && request.method === "POST") {
+      if (!allowRequest(env, request.headers.get("CF-Connecting-IP") || "local")) return Response.json({ error: "rate_limited" }, { status: 429 });
+      try {
+        let size = 0, text = "";
+        const reader = request.body?.getReader();
+        if (!reader) throw new Error("Body wajib diisi.");
+        const decoder = new TextDecoder();
+        try { while (true) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.byteLength; if (size > 16_384) throw new Error("Body terlalu besar."); text += decoder.decode(chunk.value, { stream: true }); } text += decoder.decode(); }
+        finally { await reader.cancel(); }
+        const body = JSON.parse(text);
+        return Response.json(await executeBps(body.operation, body.parameters || {}, request.headers), { headers: { "Cache-Control": "no-store" } });
+      } catch { return Response.json({ ok: false, message: "Permintaan atau credential tidak valid." }, { status: 400, headers: { "Cache-Control": "no-store" } }); }
+    }
+    if (request.method === "GET" && !url.pathname.startsWith("/mcp") && env.ASSETS) return env.ASSETS.fetch(request);
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
     try {
       return await handleMcp(request, env);

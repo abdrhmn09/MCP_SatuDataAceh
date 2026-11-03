@@ -1,0 +1,2338 @@
+{
+  "source": "https://webapi.bps.go.id/documentation/openapi.yaml",
+  "operations": {
+    "listDomains": {
+      "path": "/v1/api/domain/type/{type}/key/{key}",
+      "summary": "List domains",
+      "group": "Domains",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "type",
+          "in": "path",
+          "required": true,
+          "description": "Which level to list.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "all",
+              "prov",
+              "kab",
+              "kabbyprov"
+            ]
+          }
+        },
+        {
+          "name": "prov",
+          "in": "query",
+          "required": false,
+          "description": "Province id (4 digits). Required when `type` is `kabbyprov`, ignored otherwise. Example: `1100`.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        }
+      ]
+    },
+    "listSubjects": {
+      "path": "/v1/api/list/model/subject/domain/{domain}/key/{key}",
+      "summary": "List subjects",
+      "group": "Subjects",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "subcat",
+          "in": "query",
+          "required": false,
+          "description": "Subject category id, from **List subject categories**. Example: `1`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listSubjectCategories": {
+      "path": "/v1/api/list/model/subcat/domain/{domain}/key/{key}",
+      "summary": "List subject categories",
+      "group": "Subjects",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listVariables": {
+      "path": "/v1/api/list/model/var/domain/{domain}/key/{key}",
+      "summary": "List variables",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "subject",
+          "in": "query",
+          "required": false,
+          "description": "Subject id, from **List subjects**. Example: `40`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "description": "Only variables that have data for this year. Example: `2023`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "area",
+          "in": "query",
+          "required": false,
+          "description": "Set to `1` to list only variables that exist in this domain. Example: `1`.",
+          "schema": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        },
+        {
+          "name": "vervar",
+          "in": "query",
+          "required": false,
+          "description": "Only variables that use this vertical variable id. Example: `1`.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "listVerticalVariables": {
+      "path": "/v1/api/list/model/vervar/domain/{domain}/key/{key}",
+      "summary": "List vertical variables",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "var",
+          "in": "query",
+          "required": false,
+          "description": "Variable id, from **List variables**. Example: `145`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listDerivedVariables": {
+      "path": "/v1/api/list/model/turvar/domain/{domain}/key/{key}",
+      "summary": "List derived variables",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "var",
+          "in": "query",
+          "required": false,
+          "description": "Variable id, from **List variables**. Example: `145`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "group",
+          "in": "query",
+          "required": false,
+          "description": "Group id of the vertical variable. Example: `0`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "nopage",
+          "in": "query",
+          "required": false,
+          "description": "Set to `1` to disable pagination. Example: `1`.",
+          "schema": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listPeriods": {
+      "path": "/v1/api/list/model/th/domain/{domain}/key/{key}",
+      "summary": "List periods",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "var",
+          "in": "query",
+          "required": false,
+          "description": "Variable id, from **List variables**. Example: `145`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listDerivedPeriods": {
+      "path": "/v1/api/list/model/turth/domain/{domain}/key/{key}",
+      "summary": "List derived periods",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "var",
+          "in": "query",
+          "required": false,
+          "description": "Variable id, from **List variables**. Example: `145`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listUnits": {
+      "path": "/v1/api/list/model/unit/domain/{domain}/key/{key}",
+      "summary": "List units",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "getData": {
+      "path": "/v1/api/list/model/data/domain/{domain}/var/{var}/th/{th}/key/{key}",
+      "summary": "Get data",
+      "group": "Dynamic data",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "var",
+          "in": "path",
+          "required": true,
+          "description": "Variable id, from **List variables**.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "th",
+          "in": "path",
+          "required": true,
+          "description": "Period id(s) from **List periods** (`th_id`). One id (`100`), a list (`100;101`) or a range (`100:105`).",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]+([;:][0-9]+)*$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "turvar",
+          "in": "query",
+          "required": false,
+          "description": "Derived variable id from **List derived variables**. Example: `289`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "vervar",
+          "in": "query",
+          "required": false,
+          "description": "Vertical variable id from **List vertical variables**. Example: `9999`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "turth",
+          "in": "query",
+          "required": false,
+          "description": "Derived period id(s) from **List derived periods** (`turth_id`): `1`, `2;3` or `2:6`. Example: `0`.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]+([;:][0-9]+)*$"
+          }
+        }
+      ]
+    },
+    "listStaticTables": {
+      "path": "/v1/api/list/model/statictable/domain/{domain}/key/{key}",
+      "summary": "List static tables",
+      "group": "Static tables",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "month",
+          "in": "query",
+          "required": false,
+          "description": "Month number, 1 to 12.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "description": "Four-digit year. Example: `2023`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Search words. Use `+` between words.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getStaticTable": {
+      "path": "/v1/api/view/domain/{domain}/model/statictable/lang/{lang}/id/{id}/key/{key}",
+      "summary": "Get a static table",
+      "group": "Static tables",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Table id, from **List static tables**.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "listCsaSubjectCategories": {
+      "path": "/v1/api/list/model/subcatcsa/domain/{domain}/key/{key}",
+      "summary": "List CSA subject categories",
+      "group": "Subjects",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        }
+      ]
+    },
+    "listCsaSubjects": {
+      "path": "/v1/api/list/model/subjectcsa/domain/{domain}/key/{key}",
+      "summary": "List CSA subjects",
+      "group": "Subjects",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "subcat",
+          "in": "query",
+          "required": false,
+          "description": "CSA subject category id, from **List CSA subject categories**. Example: `1`.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "listCsaTables": {
+      "path": "/v1/api/list/model/tablestatistic/domain/{domain}/key/{key}",
+      "summary": "List tables by CSA subject",
+      "group": "Tables by CSA subject",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "subject",
+          "in": "query",
+          "required": false,
+          "description": "CSA subject id, from **List CSA subjects**. Example: `1`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "perpage",
+          "in": "query",
+          "required": false,
+          "description": "Items per page.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "getCsaTable": {
+      "path": "/v1/api/view/domain/{domain}/model/tablestatistic/id/{id}/lang/{lang}/key/{key}",
+      "summary": "Get a table by CSA subject",
+      "group": "Tables by CSA subject",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Table id, from **List tables by CSA subject**.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "description": "Four-digit year between the oldest and latest period of the table. Example: `2023`.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "listPressReleases": {
+      "path": "/v1/api/list/model/pressrelease/domain/{domain}/key/{key}",
+      "summary": "List press releases",
+      "group": "Press releases",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "month",
+          "in": "query",
+          "required": false,
+          "description": "Month number, 1 to 12.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "description": "Four-digit year. Example: `2023`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Search words. Use `+` between words.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getPressRelease": {
+      "path": "/v1/api/view/domain/{domain}/model/pressrelease/lang/{lang}/id/{id}/key/{key}",
+      "summary": "Get a press release",
+      "group": "Press releases",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Press release id, from **List press releases**.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "listPublications": {
+      "path": "/v1/api/list/model/publication/domain/{domain}/key/{key}",
+      "summary": "List publications",
+      "group": "Publications",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "month",
+          "in": "query",
+          "required": false,
+          "description": "Month number, 1 to 12.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "description": "Four-digit year. Example: `2023`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Search words. Use `+` between words.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getPublication": {
+      "path": "/v1/api/view/domain/{domain}/model/publication/lang/{lang}/id/{id}/key/{key}",
+      "summary": "Get a publication",
+      "group": "Publications",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Publication id, from **List publications**.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "listStrategicIndicators": {
+      "path": "/v1/api/list/model/indicators/domain/{domain}/key/{key}",
+      "summary": "List strategic indicators",
+      "group": "Strategic indicators",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "var",
+          "in": "query",
+          "required": false,
+          "description": "Variable id. Example: `145`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listInfographics": {
+      "path": "/v1/api/list/model/infographic/domain/{domain}/key/{key}",
+      "summary": "List infographics",
+      "group": "Infographics",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Search words. Use `+` between words.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "listNews": {
+      "path": "/v1/api/list/model/news/domain/{domain}/key/{key}",
+      "summary": "List news",
+      "group": "News",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "newscat",
+          "in": "query",
+          "required": false,
+          "description": "News category. Example: `sensus`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "sensus",
+              "survey",
+              "lainnya"
+            ]
+          }
+        },
+        {
+          "name": "month",
+          "in": "query",
+          "required": false,
+          "description": "Month number, 1 to 12.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          }
+        },
+        {
+          "name": "year",
+          "in": "query",
+          "required": false,
+          "description": "Four-digit year. Example: `2023`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Search words. Use `+` between words.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getNews": {
+      "path": "/v1/api/view/domain/{domain}/model/news/lang/{lang}/id/{id}/key/{key}",
+      "summary": "Get a news item",
+      "group": "News",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "News id, from **List news**.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "listNewsCategories": {
+      "path": "/v1/api/list/model/newscategory/domain/{domain}/key/{key}",
+      "summary": "List news categories",
+      "group": "News",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        }
+      ]
+    },
+    "listGlossary": {
+      "path": "/v1/api/list/model/glosarium/key/{key}",
+      "summary": "List glossary entries",
+      "group": "Glossary",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "prefix",
+          "in": "query",
+          "required": false,
+          "description": "First letter to search for. Example: `a`.",
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "perpage",
+          "in": "query",
+          "required": false,
+          "description": "Entries per page. Example: `10`.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          }
+        }
+      ]
+    },
+    "getGlossaryEntry": {
+      "path": "/v1/api/view/model/glosarium/id/{id}/lang/{lang}/key/{key}",
+      "summary": "Get a glossary entry",
+      "group": "Glossary",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Glossary id.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        }
+      ]
+    },
+    "getForeignTrade": {
+      "path": "/v1/api/dataexim/sumber/{sumber}/periode/{periode}/kodehs/{kodehs}/jenishs/{jenishs}/tahun/{tahun}/key/{key}",
+      "summary": "Get export or import data",
+      "group": "Foreign trade",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "sumber",
+          "in": "path",
+          "required": true,
+          "description": "Data source: `1` export, `2` import.",
+          "schema": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "name": "periode",
+          "in": "path",
+          "required": true,
+          "description": "Period type: `1` monthly, `2` annual.",
+          "schema": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "name": "kodehs",
+          "in": "path",
+          "required": true,
+          "description": "HS code(s), separated by `;`.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "jenishs",
+          "in": "path",
+          "required": true,
+          "description": "HS code type: `1` two digits, `2` full HS code.",
+          "schema": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "name": "tahun",
+          "in": "path",
+          "required": true,
+          "description": "Year of the data.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        }
+      ]
+    },
+    "listSdgsTables": {
+      "path": "/v1/api/list/model/sdgs/domain/0000/key/{key}",
+      "summary": "List SDGs tables",
+      "group": "SDGs and SDDS",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "goal",
+          "in": "query",
+          "required": false,
+          "description": "Goal number. Example: `1`.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 17
+          }
+        }
+      ]
+    },
+    "listSddsTables": {
+      "path": "/v1/api/list/model/sdds/domain/0000/key/{key}",
+      "summary": "List SDDS tables",
+      "group": "SDGs and SDDS",
+      "credential": "bps",
+      "parameters": []
+    },
+    "listClassifications": {
+      "path": "/v1/api/list/model/{model}/key/{key}",
+      "summary": "List classification items",
+      "group": "Statistical classifications",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "model",
+          "in": "path",
+          "required": true,
+          "description": "Classification to list.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "kbli2009",
+              "kbli2015",
+              "kbli2017",
+              "kbli2020",
+              "kbki2015"
+            ]
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number, starting at 1.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "perpage",
+          "in": "query",
+          "required": false,
+          "description": "Items per page. Example: `10`.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "level",
+          "in": "query",
+          "required": false,
+          "description": "Item level. Example: `kategori`.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getClassification": {
+      "path": "/v1/api/view/model/{model}/lang/{lang}/id/{id}/key/{key}",
+      "summary": "Get a classification item",
+      "group": "Statistical classifications",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "model",
+          "in": "path",
+          "required": true,
+          "description": "Classification the item belongs to.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "kbli2009",
+              "kbli2015",
+              "kbli2017",
+              "kbli2020",
+              "kbki2015"
+            ]
+          }
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Item id, for example `kbli_2009_01` or `kbki_2020_012`.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "path",
+          "required": true,
+          "description": "Response language.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ]
+          }
+        }
+      ]
+    },
+    "listCensusEvents": {
+      "path": "/v1/api/interoperabilitas/datasource/sensus/id/37/key/{key}",
+      "summary": "List census events",
+      "group": "Census",
+      "credential": "bps",
+      "parameters": []
+    },
+    "listCensusTopics": {
+      "path": "/v1/api/interoperabilitas/datasource/sensus/id/38/kegiatan/{kegiatan}/key/{key}",
+      "summary": "List census data topics",
+      "group": "Census",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "kegiatan",
+          "in": "path",
+          "required": true,
+          "description": "Census event id, from **List census events**.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "listCensusAreas": {
+      "path": "/v1/api/interoperabilitas/datasource/sensus/id/39/kegiatan/{kegiatan}/key/{key}",
+      "summary": "List census areas",
+      "group": "Census",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "kegiatan",
+          "in": "path",
+          "required": true,
+          "description": "Census event id, from **List census events**.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "listCensusDatasets": {
+      "path": "/v1/api/interoperabilitas/datasource/sensus/id/40/kegiatan/{kegiatan}/topik/{topik}/key/{key}",
+      "summary": "List census datasets",
+      "group": "Census",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "kegiatan",
+          "in": "path",
+          "required": true,
+          "description": "Census event id, from **List census events**.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "topik",
+          "in": "path",
+          "required": true,
+          "description": "Data topic id, from **List census data topics**.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "getCensusData": {
+      "path": "/v1/api/interoperabilitas/datasource/sensus/id/41/kegiatan/{kegiatan}/wilayah_sensus/{wilayah_sensus}/dataset/{dataset}/key/{key}",
+      "summary": "Get census data",
+      "group": "Census",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "kegiatan",
+          "in": "path",
+          "required": true,
+          "description": "Census event id, from **List census events**.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "wilayah_sensus",
+          "in": "path",
+          "required": true,
+          "description": "Census area id, from **List census areas**.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "dataset",
+          "in": "path",
+          "required": true,
+          "description": "Dataset id, from **List census datasets**.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ]
+    },
+    "listSimdasiProvinces": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/26/key/{key}",
+      "summary": "List province MFD codes",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": []
+    },
+    "listSimdasiRegencies": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/27/parent/{parent}/key/{key}",
+      "summary": "List regency MFD codes",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "parent",
+          "in": "path",
+          "required": true,
+          "description": "7-digit MFD code of the province.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{7}$"
+          }
+        }
+      ]
+    },
+    "listSimdasiDistricts": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/28/parent/{parent}/key/{key}",
+      "summary": "List district MFD codes",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "parent",
+          "in": "path",
+          "required": true,
+          "description": "7-digit MFD code of the regency.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{7}$"
+          }
+        }
+      ]
+    },
+    "listSimdasiSubjects": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/22/wilayah/{wilayah}/key/{key}",
+      "summary": "List Yearbook Dataset subjects",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "wilayah",
+          "in": "path",
+          "required": true,
+          "description": "7-digit MFD area code. DKI Jakarta is `3100000`.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{7}$"
+          }
+        }
+      ]
+    },
+    "listSimdasiMasterTables": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/34/key/{key}",
+      "summary": "List Yearbook Dataset master tables",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": []
+    },
+    "getSimdasiMasterTable": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/36/id_tabel/{id_tabel}/key/{key}",
+      "summary": "Get a Yearbook Dataset master table",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "id_tabel",
+          "in": "path",
+          "required": true,
+          "description": "Table id.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "listSimdasiTables": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/23/wilayah/{wilayah}/key/{key}",
+      "summary": "List Yearbook Dataset tables by area",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "wilayah",
+          "in": "path",
+          "required": true,
+          "description": "7-digit MFD area code. DKI Jakarta is `3100000`.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{7}$"
+          }
+        }
+      ]
+    },
+    "listSimdasiTablesBySubject": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/24/wilayah/{wilayah}/id_subjek/{id_subjek}/key/{key}",
+      "summary": "List Yearbook Dataset tables by area and subject",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "wilayah",
+          "in": "path",
+          "required": true,
+          "description": "7-digit MFD area code. DKI Jakarta is `3100000`.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{7}$"
+          }
+        },
+        {
+          "name": "id_subjek",
+          "in": "path",
+          "required": true,
+          "description": "MMS id of the subject (`mms_id`), from **List Yearbook Dataset subjects**.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getSimdasiTable": {
+      "path": "/v1/api/interoperabilitas/datasource/simdasi/id/25/wilayah/{wilayah}/tahun/{tahun}/id_tabel/{id_tabel}/key/{key}",
+      "summary": "Get a Yearbook Dataset table",
+      "group": "Yearbook Dataset",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "wilayah",
+          "in": "path",
+          "required": true,
+          "description": "7-digit MFD area code. DKI Jakarta is `3100000`.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{7}$"
+          }
+        },
+        {
+          "name": "tahun",
+          "in": "path",
+          "required": true,
+          "description": "Year of the data.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "id_tabel",
+          "in": "path",
+          "required": true,
+          "description": "Table id, from **List Yearbook Dataset tables by area**.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "searchContent": {
+      "path": "/v1/searching/content/domain/{domain}/model/{model}/key/{key}",
+      "summary": "Search content",
+      "group": "Search",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "model",
+          "in": "path",
+          "required": true,
+          "description": "Kind of content to search.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "tablestatistic",
+              "publication",
+              "pressrelease",
+              "news",
+              "infographic"
+            ]
+          }
+        },
+        {
+          "name": "domain",
+          "in": "path",
+          "required": true,
+          "description": "4-digit domain id from **List domains**. `0000` is the central level; `3100` is DKI Jakarta.",
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": true,
+          "description": "Page number.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "from",
+          "in": "query",
+          "required": false,
+          "description": "Start date of the search period.",
+          "schema": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        {
+          "name": "to",
+          "in": "query",
+          "required": false,
+          "description": "End date of the search period.",
+          "schema": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        {
+          "name": "classification",
+          "in": "query",
+          "required": false,
+          "description": "id of the CSA subject, from **List CSA subjects**.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "lang",
+          "in": "query",
+          "required": false,
+          "description": "Response language. Defaults to `ind`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "ind",
+              "eng"
+            ],
+            "default": "ind"
+          }
+        },
+        {
+          "name": "perpage",
+          "in": "query",
+          "required": false,
+          "description": "Items per page.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Words to search for. Use `+` between words. Example: `inflasi+bulanan`.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getSdgsHome": {
+      "path": "/v1/sdgs",
+      "summary": "Get SDGs API home",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": []
+    },
+    "listSdgsGoals": {
+      "path": "/v1/sdgs/goals",
+      "summary": "List SDGs goals",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "filters[name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal name.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[number]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal number.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getSdgsGoal": {
+      "path": "/v1/sdgs/goals/{id}",
+      "summary": "Get an SDG goal",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Identifier of the goal.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "listSdgsIndicators": {
+      "path": "/v1/sdgs/indicators",
+      "summary": "List SDG indicators",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "filters[name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by indicator name.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[number]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by indicator number.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[goal_id]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal identifier.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[goal_number]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal number.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[goal_name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal name.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[target_id]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by target identifier.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getSdgsIndicator": {
+      "path": "/v1/sdgs/indicators/{id}",
+      "summary": "Get an SDG indicator",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Identifier of the indicator.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "listSdgsDatasets": {
+      "path": "/v1/sdgs/datasets",
+      "summary": "List SDG datasets",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "page[number]",
+          "in": "query",
+          "required": false,
+          "description": "Page number. Must be a positive integer.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "page[size]",
+          "in": "query",
+          "required": false,
+          "description": "Number of records per page. Must be a positive integer.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "filters[name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by dataset name. Use no more than one filter option at a time, according to the collection.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[goal_id]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal id. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[goal_name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal name. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[goal_number]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by goal number. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[target_id]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by target id. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[target_name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by target name. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[target_number]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by target number. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[indicator_id]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by indicator id. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[indicator_name]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by indicator name. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "filters[indicator_number]",
+          "in": "query",
+          "required": false,
+          "description": "Filter by indicator number. Use no more than one filter option at a time.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "getSdgsDataset": {
+      "path": "/v1/sdgs/datasets/{id}",
+      "summary": "Get an SDG dataset",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Identifier of the dataset.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "getSdgsDatasetRelationship": {
+      "path": "/v1/sdgs/datasets/{id}/{relationships}",
+      "summary": "Get an SDG dataset relationship",
+      "group": "SDGs Access",
+      "credential": "sdgs",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Identifier of the dataset.",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "name": "relationships",
+          "in": "path",
+          "required": true,
+          "description": "Relationship resource to retrieve: `data` or `catalogue`.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "data",
+              "catalogue"
+            ]
+          }
+        }
+      ]
+    },
+    "listForeignTradeYears": {
+      "path": "/v1/api/list/model/year-exim-data/key/{key}",
+      "summary": "List available foreign-trade years",
+      "group": "Foreign trade",
+      "credential": "bps",
+      "parameters": []
+    },
+    "listForeignTradePorts": {
+      "path": "/v1/api/list/model/port/key/{key}",
+      "summary": "List foreign-trade ports",
+      "group": "Foreign trade",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "description": "Maximum number of records requested per page.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listForeignTradeCountries": {
+      "path": "/v1/api/list/model/country/key/{key}",
+      "summary": "List foreign-trade countries",
+      "group": "Foreign trade",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "description": "Maximum number of records requested per page.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    },
+    "listForeignTradeHsCodes": {
+      "path": "/v1/api/list/model/hs-code/key/{key}",
+      "summary": "List HS codes",
+      "group": "Foreign trade",
+      "credential": "bps",
+      "parameters": [
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "description": "HS-code level: `1` for two-digit codes or `2` for full HS codes.",
+          "schema": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "name": "keyword",
+          "in": "query",
+          "required": false,
+          "description": "Filter codes by words in their description. Matching is on the code text, for example `horse` returns the codes that mention horses.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "required": false,
+          "description": "Page number.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "description": "Maximum number of records requested per page.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ]
+    }
+  }
+}

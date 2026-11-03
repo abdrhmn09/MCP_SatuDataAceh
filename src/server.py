@@ -23,7 +23,7 @@ except ImportError:
 
 from pydantic import BaseModel
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, FileResponse
 
 def _redact_secret(value: str) -> str:
     value = re.sub(r"(/key/)[^/?#\s]+", r"\1***", value, flags=re.IGNORECASE)
@@ -73,6 +73,26 @@ try:
     from .cache import muat_katalog, catalog_status
 except ImportError:
     from cache import muat_katalog, catalog_status
+
+try:
+    from . import bps_api
+except ImportError:
+    import bps_api
+
+
+def _request_headers():
+    try:
+        return mcp.get_context().request_context.request.headers
+    except (LookupError, RuntimeError, AttributeError, ValueError):
+        return {}
+
+
+def _bps_api_key():
+    headers = _request_headers()
+    if any(name in headers for name in ("x-bps-api-key", "authorization")):
+        return bps_api.credential(headers)
+    return BPS_API_KEY
+
 
 class SearchResult(BaseModel):
     id: str
@@ -380,7 +400,7 @@ def _bps_url(source: dict[str, str], th: str = "124") -> str:
         f"domain/{quote(source['domain'], safe='')}/"
         f"var/{quote(source['variable'], safe='')}/"
         + (f"th/{quote(th, safe='')}/" if th else "")
-        + f"key/{quote(BPS_API_KEY, safe='')}"
+        + f"key/{quote(_bps_api_key(), safe='')}"
     )
 
 
@@ -400,12 +420,12 @@ def _bps_payload_to_csv(payload: object) -> str:
     return frame.to_csv(index=False)
 
 
-async def _read_bps_payload(url: str) -> object:
+async def _read_bps_payload(url: str, headers: dict | None = None) -> object:
     chunks = []
     size = 0
     async with asyncio.timeout(30):
         async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=False) as client:
-            async with client.stream("GET", url) as response:
+            async with client.stream("GET", url, headers=headers) as response:
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes():
                     size += len(chunk)
@@ -418,7 +438,7 @@ async def _read_bps_payload(url: str) -> object:
 async def _ambil_dari_bps(item: dict[str, object]) -> tuple[CsvReadResult, dict[str, str]] | None:
     """Ambil data dari BPS sebagai fallback untuk dataset Satu Data Aceh yang kosong."""
     source = _bps_source(item)
-    if not source or not BPS_API_KEY:
+    if not source or not _bps_api_key():
         return None
     kandidat_th = ["", source.get("defaultTh"), "124", "123", "122"]
     sudah_dicoba: set[str] = set()
@@ -453,7 +473,7 @@ async def _ambil_langsung_dari_bps(
     Digunakan oleh tool bandingkan_data untuk mendapatkan angka resmi terbaru dari BPS.
     Mengembalikan (CsvReadResult, url_bps) atau None jika gagal / API key tidak ada.
     """
-    if not BPS_API_KEY:
+    if not _bps_api_key():
         return None
     th_candidates = ["", default_th, "124", "123", "122"]
     sudah_dicoba: set[str] = set()
@@ -466,7 +486,7 @@ async def _ambil_langsung_dari_bps(
             f"domain/{quote(domain, safe='')}/"
             f"var/{quote(var_id, safe='')}/"
             + (f"th/{quote(th, safe='')}/" if th else "")
-            + f"key/{quote(BPS_API_KEY, safe='')}"
+            + f"key/{quote(_bps_api_key(), safe='')}"
         )
         try:
             teks_csv = bps_payload_ke_csv(await _read_bps_payload(url))
@@ -900,6 +920,82 @@ async def health(_: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "satu-data-aceh-mcp", "catalog": catalog_status()})
 
 
+async def _execute_bps(operation: str, parameters: dict, headers) -> dict:
+    if operation not in bps_api.OPERATIONS:
+        raise ValueError("Operasi tidak dikenal; gunakan bps_endpoints.")
+    key = bps_api.credential(headers, BPS_API_KEY, bps_api.OPERATIONS[operation]["credential"])
+    url, public_url, upstream_headers = bps_api.build_request(operation, parameters, key)
+    try:
+        payload = await _read_bps_payload(url, upstream_headers)
+    except (httpx.HTTPError, TimeoutError, ValueError):
+        return {"ok": False, "error": "upstream_error", "message": "BPS tidak dapat diakses atau respons melebihi batas; periksa key dan parameter."}
+    payload = bps_api.sanitize(payload, [key])
+    failed = not isinstance(payload, dict) or bool(payload.get("errors")) or str(payload.get("status", "")).lower() == "error" or not any(k in payload for k in ("data", "datacontent"))
+    return {"ok": not failed, "operation": operation, "url": public_url, "data": payload}
+
+
+@mcp.tool()
+async def bps_endpoints(operation: str = "", query: str = "") -> dict:
+    """Daftar 59 operasi resmi BPS: domain, data dinamis/statis, publikasi, sensus, perdagangan, SDGs. Isi operation untuk skema parameter lengkap. Tidak memerlukan key."""
+    if not await _rate_limiter.allow():
+        return {"error": "rate_limited"}
+    return bps_api.catalog(operation, query)
+
+
+@mcp.tool()
+async def bps_request(operation: str, parameters: dict[str, str | int] | None = None) -> dict:
+    """Jalankan operasi read-only BPS pada semua domain. Temukan operation dan parameter melalui bps_endpoints. Key berasal dari header koneksi, bukan argumen tool. Pertahankan pagination dan dimensi respons asli."""
+    if not await _rate_limiter.allow():
+        return {"error": "rate_limited"}
+    try:
+        return await _execute_bps(operation, parameters or {}, _request_headers())
+    except ValueError as error:
+        return {"ok": False, "error": "invalid_request", "message": str(error)}
+
+
+@mcp.tool()
+async def bps_check_key(service: str = "bps") -> dict:
+    """Validasi credential koneksi ke BPS atau SDGs tanpa menampilkan key. Tidak menyimpan credential pengguna."""
+    if service not in {"bps", "sdgs"}:
+        return {"ok": False, "error": "service harus bps atau sdgs"}
+    result = await bps_request("listDomains" if service == "bps" else "getSdgsHome", {"type": "all"} if service == "bps" else {})
+    return {"ok": result.get("ok", False), "service": service, "message": "Credential diterima BPS." if result.get("ok") else "Credential belum dapat diverifikasi; periksa key atau koneksi BPS."}
+
+
+@mcp.custom_route("/", methods=["GET"], include_in_schema=False)
+async def landing_page(_: Request):
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
+
+
+@mcp.custom_route("/api/bps/endpoints", methods=["GET"], include_in_schema=False)
+async def bps_endpoint_catalog(request: Request):
+    try:
+        return JSONResponse(bps_api.catalog(request.query_params.get("operation", ""), request.query_params.get("query", "")), headers={"Cache-Control": "no-store"})
+    except ValueError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+
+
+@mcp.custom_route("/api/bps", methods=["POST"], include_in_schema=False)
+async def bps_browser_request(request: Request):
+    if not await _rate_limiter.allow(request.client.host if request.client else "local"):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
+    try:
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 16_384:
+                return JSONResponse({"error": "body_too_large"}, status_code=413)
+        body = json.loads(raw)
+        if not isinstance(body, dict) or not isinstance(body.get("operation"), str):
+            raise ValueError("operation wajib diisi.")
+        # Browser requests must supply their own credentials; never use operator's key.
+        bps_api.credential(request.headers, service=bps_api.OPERATIONS.get(body["operation"], {}).get("credential", "bps"))
+        result = await _execute_bps(body["operation"], body.get("parameters", {}), request.headers)
+        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    except (ValueError, TypeError) as error:
+        return JSONResponse({"ok": False, "message": str(error)}, status_code=400, headers={"Cache-Control": "no-store"})
+
+
 @mcp.tool()
 async def search(query: str, wilayah: str = "", produsen: str = "", limit: int = 5, offset: int = 0) -> SearchOutput:
     """Mencari dataset Aceh dan mengembalikan hasil dengan URL yang dapat dikutip."""
@@ -1291,7 +1387,7 @@ async def bandingkan_data(indikator: str) -> str:
                 bps_teks = result_bps.preview
             else:
                 bps_teks = result_bps.message
-        elif not BPS_API_KEY:
+        elif not _bps_api_key():
             bps_status = "api_key_tidak_ada"
             bps_teks = "BPS API key belum dikonfigurasi. Hubungi pengelola server."
         else:

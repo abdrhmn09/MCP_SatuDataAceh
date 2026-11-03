@@ -26,4 +26,4 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-src = ["bps_catalog.json", "comparison_rules.json", "search_rules.json"]
+src = ["bps_catalog.json", "comparison_rules.json", "search_rules.json", "bps_operations.json", "static/*.html"]

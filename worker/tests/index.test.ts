@@ -229,7 +229,7 @@ describe("Cloudflare Worker adapter & Tools", () => {
     expect(link).toBe("https://example.com/data/laporan.csv");
   });
 
-  it("createServer mendaftarkan 5 tool lengkap", () => {
+  it("createServer mendaftarkan 8 tool lengkap", () => {
     const server = createServer(mockEnv);
     expect(server).toBeDefined();
   });

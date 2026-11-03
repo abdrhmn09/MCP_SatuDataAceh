@@ -20,7 +20,7 @@ it("MCP comparison rejects mismatched units using actual BPS labels and observat
   await server.connect(serverTransport);
   await client.connect(clientTransport);
   try {
-    expect((await client.listTools()).tools).toHaveLength(5);
+    expect((await client.listTools()).tools).toHaveLength(8);
     const comparison = await client.callTool({ name: "bandingkan_data", arguments: { indikator: "kemiskinan" } });
     expect((comparison.structuredContent as { comparability_status: string }).comparability_status).toBe("incomparable");
     const text = JSON.stringify(comparison);
