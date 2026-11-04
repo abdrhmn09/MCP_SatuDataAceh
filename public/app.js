@@ -243,10 +243,18 @@ $('testKey').addEventListener('click', async () => {
   const summary = $('bpsDiagnosticSummary');
   const button = $('testKey');
   const cancel = $('cancelBpsDiagnostic');
+  const filter = $('bpsDiagnosticFilter');
+  const copyReport = $('copyBpsDiagnostic');
+  const empty = $('bpsDiagnosticEmpty');
+  let startedAt = '';
   button.disabled = true;
   button.textContent = 'Sedang menguji…';
   cancel.hidden = false;
   table.replaceChildren();
+  filter.value = 'all';
+  copyReport.disabled = true;
+  $('bpsDiagnosticActions').hidden = true;
+  empty.hidden = true;
   table.closest('.diagnostic-table').hidden = true;
   $('bpsDiagnostic').hidden = false;
   progress.value = 0;
@@ -262,31 +270,71 @@ $('testKey').addEventListener('click', async () => {
       ...Object.keys(counts).map(status => `${counts[status]} ${diagnosticLabels[status].toLowerCase()}`)].join(' · ');
   }
 
-  function updateRow(row, status, reason) {
-    row.status = status;
-    row.cells[2].textContent = diagnosticLabels[status];
-    row.cells[3].textContent = reason;
+  function applyFilter() {
+    let visible = 0;
+    for (const row of rows.values()) {
+      row.element.hidden = filter.value !== 'all' && row.status !== filter.value;
+      if (!row.element.hidden) visible++;
+    }
+    empty.hidden = !rows.size || visible > 0;
   }
+
+  function updateRow(row, result) {
+    row.status = result.status;
+    row.result = result;
+    row.cells[2].textContent = diagnosticLabels[result.status];
+    row.cells[4].textContent = [result.http_status ? 'HTTP ' + result.http_status : '', result.message]
+      .filter(Boolean).join(' · ');
+    const sample = document.createElement('pre');
+    const params = result.parameters;
+    sample.textContent = params
+      ? (Object.keys(params).length ? JSON.stringify(params) : 'Tanpa parameter')
+      : '—';
+    row.cells[3].replaceChildren(sample);
+    if (result.attempted_at) {
+      const time = document.createElement('small');
+      time.textContent = date(Date.parse(result.attempted_at) / 1000) + ' · ' + result.duration_ms + ' ms';
+      row.cells[3].append(time);
+    }
+  }
+
+  filter.onchange = applyFilter;
+  copyReport.onclick = () => {
+    const report = {
+      started_at: startedAt,
+      summary: summary.textContent,
+      operations: [...rows].map(([operation, row]) => ({
+        operation, credential: row.credential, ...row.result
+      }))
+    };
+    copy(JSON.stringify(report, null, 2), 'Laporan diagnostik BPS');
+  };
 
   let finished = false;
   function handle(event) {
     if (event.type === 'error') throw new Error(event.message);
     if (event.type === 'start') {
+      startedAt = event.started_at;
       progress.max = event.operations.length;
       for (const item of event.operations) {
         const tr = table.insertRow();
-        const cells = Array.from({ length: 4 }, () => tr.insertCell());
+        const cells = Array.from({ length: 5 }, () => tr.insertCell());
         cells[0].textContent = item.operation;
         cells[1].textContent = item.credential === 'sdgs' ? 'SDGs Access' : 'Web API BPS';
-        const row = { cells };
-        updateRow(row, 'pending', '—');
+        const row = { cells, element: tr, credential: item.credential };
+        updateRow(row, { status: 'pending', message: '—' });
         rows.set(item.operation, row);
       }
       table.closest('.diagnostic-table').hidden = false;
+      $('bpsDiagnosticActions').hidden = false;
       showSummary();
     } else if (event.type === 'operation') {
       const row = rows.get(event.operation);
-      if (row) updateRow(row, event.status, event.message);
+      if (row) {
+        const { status, code, message, parameters, attempted_at, duration_ms, http_status } = event;
+        updateRow(row, { status, code, message, parameters, attempted_at, duration_ms, http_status });
+      }
+      applyFilter();
       showSummary();
     } else if (event.type === 'done') {
       finished = true;
@@ -315,13 +363,15 @@ $('testKey').addEventListener('click', async () => {
   } catch (error) {
     const reason = controller.signal.aborted ? 'Pengujian dibatalkan.' : error.message;
     for (const row of rows.values()) {
-      if (row.status === 'pending') updateRow(row, 'not_tested', reason);
+      if (row.status === 'pending') updateRow(row, { status: 'not_tested', message: reason });
     }
+    applyFilter();
     if (rows.size) showSummary(reason + ' ');
     else summary.textContent = reason;
   } finally {
     bpsDiagnostic = null;
     cancel.hidden = true;
+    copyReport.disabled = !rows.size;
     button.textContent = 'Uji koneksi BPS';
     updateKey();
   }

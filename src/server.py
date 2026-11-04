@@ -993,7 +993,10 @@ async def _execute_bps(operation: str, parameters: dict, headers, *, read=None, 
             details["http_status"] = status
             code = bps_api.status_error(status)
             payload = error.response.extensions.get("bps_error_payload")
-            if isinstance(payload, dict) and status not in {401, 403, 429}:
+            if status != 429 and bps_api.credential_invalid(payload):
+                code = "credential_rejected"
+                details["credential_invalid"] = True
+            elif isinstance(payload, dict) and status not in {401, 403, 429}:
                 reason = str(payload.get("message", "")).lower()
                 if bps_api.payload_error(payload) == "data_unavailable" or (
                     status == 404 and reason.strip().rstrip(".") == "tabel tidak ditemukan"
@@ -1008,7 +1011,7 @@ async def _execute_bps(operation: str, parameters: dict, headers, *, read=None, 
                         message = "BPS menolak angka pada parameter model, sedangkan katalog BPS mendokumentasikan model dengan angka."
                 elif "service is currently unavailable" in reason:
                     message = "BPS melaporkan bahwa layanan ini sedang tidak tersedia."
-            if status in {429, 500, 502, 503, 504}:
+            if status in {429, 500, 502, 503, 504} and code != "credential_rejected":
                 delay = _bps_retry_delay(error.response)
                 if status == 429 or "Retry-After" in error.response.headers:
                     details["retry_after"] = delay
@@ -1022,6 +1025,8 @@ async def _execute_bps(operation: str, parameters: dict, headers, *, read=None, 
             code = "upstream_invalid_response"
         else:
             code = bps_api.payload_error(payload)
+            if code == "credential_rejected" and bps_api.credential_invalid(payload):
+                details["credential_invalid"] = True
             if code != "upstream_invalid_response":
                 details["data"] = bps_api.sanitize(payload, [key])
             if code is None:
@@ -1144,8 +1149,9 @@ async def _bps_diagnostic_events(user, vault):
         sources = {source for deps in bps_diagnostics.DEPENDENCIES.values() for source in deps}
         previous = {}
         blocked = {}
-        missing = {service for service in ("bps", "sdgs") if not vault.get_key(uid, service)}
-        yield {"type": "start", "operations": list(operations.values())}
+        credentials = {service: vault.get_key(uid, service) for service in ("bps", "sdgs")}
+        yield {"type": "start", "started_at": datetime.now(timezone.utc).isoformat(),
+               "operations": list(operations.values())}
         session_ended = False
         for name in bps_diagnostics.ordered_operations():
             service = operations[name]["credential"]
@@ -1156,7 +1162,7 @@ async def _bps_diagnostic_events(user, vault):
                 code, message = "session_ended", "Sesi akun berakhir."
             elif loop.time() >= deadline:
                 code, message = "deadline", "Batas waktu pengujian tercapai."
-            elif service in missing:
+            elif not credentials[service]:
                 code, message = "missing_credential", "Kredensial belum disimpan."
             elif service in blocked:
                 code, message = blocked[service]
@@ -1168,10 +1174,17 @@ async def _bps_diagnostic_events(user, vault):
             if parameters is None:
                 yield {"type": "operation", "operation": name, "status": "not_tested", "code": code, "message": message}
                 continue
-            result = await _execute_bps(name, parameters, {}, read=paced_read, budget=min(20, deadline - loop.time()))
+            attempted_at = datetime.now(timezone.utc).isoformat()
+            started = loop.time()
+            result = await _execute_bps(name, parameters, {}, read=paced_read, budget=min(20, deadline - started))
             code = result.get("error", "")
             if code == "upstream_rate_limited":
                 blocked[service] = (code, "Pengujian layanan ini dihentikan karena pembatasan BPS.")
+            if code == "credential_rejected" and (
+                result.get("credential_invalid") or
+                (name in {"listDomains", "getSdgsHome"} and result.get("http_status") == 401)
+            ):
+                blocked[service] = ("credential_rejected", "Kredensial ditolak BPS. Periksa kredensial di pengaturan API key.")
             if name in sources and result["ok"]:
                 # Keep only the bounded rows needed by dependent requests.
                 previous[name] = ({"ok": True, "data": {"data": bps_api.rows(result["data"])[:50]}}, parameters)
@@ -1179,7 +1192,10 @@ async def _bps_diagnostic_events(user, vault):
                 "data_unavailable": "unavailable", "missing_credential": "not_tested",
             }.get(code, "failed")
             yield {"type": "operation", "operation": name, "status": status, "code": code,
-                   "message": result.get("message", "BPS mengembalikan data untuk sampel ini.")}
+                   "message": result.get("message", "BPS mengembalikan data untuk sampel ini."),
+                   "parameters": bps_api.sanitize(parameters, credentials.values()),
+                   "attempted_at": attempted_at, "duration_ms": round((loop.time() - started) * 1000),
+                   "http_status": result.get("http_status")}
         yield {"type": "done"}
     finally:
         _active_bps_diagnostics.discard(uid)

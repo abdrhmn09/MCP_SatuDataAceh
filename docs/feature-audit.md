@@ -26,3 +26,19 @@ Periode BPS diambil dari metadata dengan batas permintaan agar tool tidak berjal
 ## Verifikasi
 
 Jalankan `python3 -m unittest discover -s tests -q` untuk proyek Python. Jalankan `npm run typecheck` dan `npm test` dari repositori Worker. Regresi laporan tersedia pada `tests/test_report_regressions.py` di proyek Python dan `tests/report.test.ts` di repositori Worker, termasuk unknown operation, schema batas baris, null/nonfinite, kesepadanan wilayah/periode, dan credential SDGs terpisah.
+
+## Uji ulang BPS 4 November 2026
+
+Sampel berikut dikirim sekitar 18.07 WIB dengan kredensial uji Web API BPS. Parameter disimpan agar pengujian dapat diulang.
+
+| Operasi | Parameter sampel | Respons yang diterima |
+|---|---|---|
+| `listCensusAreas` | `{"kegiatan":"sp2020"}` | Bentuk respons tidak dapat diproses. Uji sebelumnya menemukan halaman HTML di dalam JSON. |
+| `listClassifications` | `{"model":"kbli2020","page":1,"perpage":10}` | HTTP 500. BPS melaporkan layanan tidak tersedia. |
+| `getClassification` | `{"model":"kbli2020","id":"kbli_2020_011","lang":"eng"}` | HTTP 400. Validasi BPS menolak angka pada `model`, termasuk pada nilai contoh resmi. |
+| `listGlossary` | `{"prefix":"a","page":1,"perpage":10}` | HTTP 500. BPS melaporkan layanan tidak tersedia. |
+| `getGlossaryEntry` | `{"id":4406,"lang":"eng"}` | HTTP 400. BPS melaporkan layanan tidak tersedia. |
+| `listSimdasiMasterTables` | `{}` | BPS melaporkan data tidak tersedia. |
+| `getSimdasiMasterTable` | `{"id_tabel":"UFpWMmJZOVZlZTJnc1pXaHhDV1hPQT09"}` | BPS melaporkan data tidak tersedia untuk ID contoh ini. |
+
+Kelompok SDGs Access diverifikasi melalui simulasi. Uji langsung memerlukan token uji SDGs Access. Bandingkan nama dan parameter operasi dengan [spesifikasi resmi BPS](https://webapi.bps.go.id/documentation/openapi.yaml) saat meneruskan temuan.

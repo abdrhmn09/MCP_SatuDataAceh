@@ -98,6 +98,8 @@ sudo install -m 644 deploy/nginx.conf /etc/nginx/sites-available/mcpsatudataaceh
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+Untuk VPS produksi yang memakai systemd, ambil commit rilis melalui Git atau bundle, lalu jalankan `bash deploy/release-vps.sh SHA_COMMIT_LENGKAP` dari checkout produksi. Gunakan versi skrip dari commit target jika checkout aktif belum menyertakannya. Skrip memeriksa checkout, mencadangkan SQLite dan aset web, memasang backend sebelum aset, serta memeriksa HTTPS dan discovery OAuth. Jika pemeriksaan gagal, skrip memulihkan kode dan aset. Cadangan database tetap tersedia untuk pemulihan data yang ditinjau secara terpisah. Master key dicadangkan melalui prosedur penyimpanan rahasia yang terpisah.
+
 Restart/recreate aplikasi setelah mengganti kode atau environment. Gunakan `MCP_TRANSPORT=both` untuk `/mcp` dan `/sse` bersama-sama. Mode `sse` dan `streamable-http` tetap tersedia bila ingin satu transport saja; discovery tetap mempublikasikan kedua resource, jadi pilih URL yang transportnya aktif. `/health` hanya liveness dan status cache, bukan bukti upstream BPS tersedia.
 
 Template `render.yaml` sekarang membutuhkan disk persisten dan plan yang mendukung disk (starter). Ini dapat menimbulkan biaya bila Anda memilih deploy melalui Render; tidak ada deployment otomatis dari pekerjaan lokal. Jangan menaruh database akun pada filesystem sementara layanan gratis.
@@ -153,7 +155,7 @@ Gateway Cloudflare dikelola di [repositori Worker mandiri](https://github.com/ab
 
 Cakupan operasi: domain, subjek, variabel/dimensi, periode, data dinamis, tabel statis/CSA, siaran pers, publikasi, indikator strategis, infografis, berita, glosarium, perdagangan, klasifikasi, sensus, Yearbook Dataset, SDGs/SDDS dan SDGs Access. Ketersediaan tetap bergantung pada data/API/key/kuota BPS. File PDF/unduhan publikasi mengikuti tautan yang disediakan upstream.
 
-Di **Akun saya → API key**, tombol **Uji koneksi BPS** menjalankan satu sampel untuk setiap operasi dan menampilkan hasil bertahap. Operasi dengan kredensial yang belum tersimpan ditandai **Belum diuji**. Hasil berlaku untuk sampel tersebut dan pengujian dapat dibatalkan. Pengujian dibatasi satu kali per akun setiap 10 menit.
+Di **Akun saya → API key**, tombol **Uji koneksi BPS** menjalankan satu sampel untuk setiap operasi dan menampilkan hasil bertahap. Operasi dengan kredensial yang belum tersimpan ditandai **Belum diuji**. Filter membantu meninjau kegagalan dan **Salin laporan** menyalin parameter sampel, waktu, durasi, kode HTTP jika tersedia, serta status setiap operasi. Pengujian dapat dibatalkan dan dibatasi satu kali per akun setiap 10 menit.
 
 Contoh argumen tool (tanpa credential):
 

@@ -64,6 +64,7 @@ class DiagnosticSamplesTests(unittest.TestCase):
             ({"data": {"sdgsDatasets": {"content": []}}}, "data_unavailable"),
             ({"data": {"sdgsGoals": []}}, "data_unavailable"),
             ({"status": "error", "errors": [{"status": "401"}]}, "credential_rejected"),
+            ({"status": "error", "errors": [{"code": "invalid_token"}]}, "credential_rejected"),
             ({"meta": {"status": {"code": 429}}, "data": []}, "upstream_rate_limited"),
             ({"status": "OK"}, "upstream_invalid_response"),
             ({"data": [{"page": 1}, [{"id": 7}]]}, None),
@@ -115,6 +116,34 @@ class DiagnosticRunnerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Counter(row["status"] for row in results), {"failed": 1, "not_tested": 50, "passed": 8})
         self.assertEqual(call.await_count, 9)
         self.assertNotIn("test-user", server._active_bps_diagnostics)
+
+    async def test_confirmed_credential_failure_stops_group_but_permission_failure_does_not(self):
+        vault = Mock()
+        vault.get_key.side_effect = lambda _, service: "fixture-" + service
+        user = {"id": "preflight-user", "raw": "session"}
+
+        for evidence, expected in [
+            ({"http_status": 401}, 9),
+            ({"http_status": 403, "credential_invalid": True}, 9),
+            ({"http_status": 403}, 59),
+        ]:
+            with self.subTest(evidence=evidence):
+                async def probe(name, parameters, headers, **kwargs):
+                    if name == "listDomains":
+                        return bps_api.failure(name, "credential_rejected", **evidence)
+                    return {"ok": True, "data": {"data": [{"id": 1}]}}
+
+                with patch.object(server, "_execute_bps", side_effect=probe) as call:
+                    events = [event async for event in server._bps_diagnostic_events(user, vault)]
+                self.assertEqual(call.await_count, expected)
+                self.assertIn("started_at", events[0])
+                by_name = {event["operation"]: event for event in events if event["type"] == "operation"}
+                first = by_name["listDomains"]
+                self.assertEqual(first["parameters"], {"type": "prov"})
+                self.assertEqual(first["http_status"], evidence["http_status"])
+                self.assertIn("attempted_at", first)
+                self.assertEqual(by_name["listSubjects"]["status"], "passed" if expected == 59 else "not_tested")
+                self.assertEqual(by_name["getSdgsHome"]["status"], "passed")
 
     async def test_cancellation_and_duplicate_run_release_slot(self):
         vault = Mock()

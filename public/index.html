@@ -5,8 +5,8 @@
 <meta name="description" content="Hubungkan asisten AI ke Satu Data Aceh dan BPS. Kelola API key terenkripsi dan token MCP dari akun pribadi.">
 <meta name="referrer" content="no-referrer">
 <title>MCP Satu Data Aceh — Akses data publik Aceh</title>
-<link rel="stylesheet" href="/styles.css?v=8">
-<script src="/app.js?v=8" defer></script>
+<link rel="stylesheet" href="/styles.css?v=9">
+<script src="/app.js?v=9" defer></script>
 </head>
 <body>
 <header><div class="bar"><a class="brand" href="#home"><span class="mark">∷</span>MCP Satu Data Aceh</a><nav aria-label="Navigasi utama"><a href="#explore">Jelajahi data</a><a href="#guide">Panduan koneksi</a><a id="navAccount" class="button" href="#login">Masuk / daftar</a></nav></div></header>
@@ -102,9 +102,23 @@
   <p>Setiap operasi memakai satu sampel. Pengujian dapat berlangsung hingga empat menit.</p>
   <progress id="bpsDiagnosticProgress" value="0" max="1" aria-label="Progres uji koneksi BPS"></progress>
   <p id="bpsDiagnosticSummary" role="status"></p>
+  <div class="diagnostic-actions" id="bpsDiagnosticActions" hidden>
+    <div>
+      <label for="bpsDiagnosticFilter">Filter hasil</label>
+      <select id="bpsDiagnosticFilter">
+        <option value="all">Semua operasi</option>
+        <option value="failed">Gagal</option>
+        <option value="unavailable">Data tidak tersedia</option>
+        <option value="not_tested">Belum diuji</option>
+        <option value="passed">Berhasil</option>
+      </select>
+    </div>
+    <button id="copyBpsDiagnostic" type="button" class="secondary" disabled>Salin laporan</button>
+  </div>
+  <p id="bpsDiagnosticEmpty" class="hint" hidden>Tidak ada operasi dengan status ini.</p>
   <div class="diagnostic-table" tabindex="0" role="region" aria-label="Hasil setiap operasi BPS" hidden>
     <table>
-      <thead><tr><th scope="col">Operasi</th><th scope="col">Layanan</th><th scope="col">Status</th><th scope="col">Keterangan</th></tr></thead>
+      <thead><tr><th scope="col">Operasi</th><th scope="col">Layanan</th><th scope="col">Status</th><th scope="col">Sampel dan waktu</th><th scope="col">Keterangan</th></tr></thead>
       <tbody id="bpsDiagnosticRows"></tbody>
     </table>
   </div>
@@ -135,10 +149,10 @@
 <div class="actions"><button id="logoutSecondary" type="button" class="secondary">Keluar dari akun</button></div></div>
 </div></section>
 <section id="view-explore" class="wrap section" hidden><div class="section-head"><div><p class="eyebrow">Explorer data</p><h2>Coba operasi BPS.</h2><p>Gunakan key tersimpan untuk menjalankan satu operasi. Data dan pagination mengikuti respons asli BPS. Sukses pada satu operasi tidak membuktikan seluruh operasi tersedia.</p></div><span id="health" class="badge muted">Memeriksa layanan…</span></div><div id="explorerLoginNotice" class="message info" hidden>Masuk dan simpan API key BPS sebelum menjalankan permintaan. <a href="#login">Masuk ke akun ↗</a></div><div class="explorer"><form id="explorer"><label for="operation">Operasi BPS</label><select id="operation"><option value="listDomains">List domains</option></select><details style="margin-top:18px"><summary>Petunjuk parameter</summary><pre id="schema">Memuat skema…</pre></details><label for="parameters">Parameter JSON</label><textarea id="parameters" rows="8" spellcheck="false">{"type":"all"}</textarea><div class="actions"><button id="run" type="submit">Ambil data</button></div><div id="explorerError" class="message error" role="alert" hidden></div><p class="hint">Credential menggunakan sesi akun; jangan memasukkan API key ke parameter.</p></form><div class="result-area"><div class="result-head"><span>RESPONS BPS / JSON</span><span id="resultStatus">Belum dijalankan</span></div><pre id="result">Pilih operasi dan sesuaikan parameter, lalu tekan Ambil data.</pre></div></div></section>
-<section id="view-guide" class="wrap section" hidden><p class="eyebrow">Panduan singkat</p><h2>Akun, sumber data, dan izin aplikasi.</h2><div class="cards" style="margin:28px 0"><article class="card"><span class="badge">1 / Website ini</span><h3>Password akun</h3><p>Dipakai untuk masuk ke dashboard dan mengelola pengaturan Anda.</p></article><article class="card"><span class="badge">2 / Sumber BPS</span><h3>API key BPS</h3><p>Didapatkan dari Web API BPS. Disimpan terenkripsi agar server bisa mengambil data untuk Anda.</p></article><article class="card"><span class="badge">3 / Klien AI</span><h3>Izin aplikasi AI</h3><p>OAuth menerbitkan token otomatis setelah persetujuan Anda. Akses dapat dicabut pada Aplikasi terhubung. Token manual tersedia untuk klien lama.</p></article></div><div class="card"><h3>Mulai dari akun Anda</h3><p>Daftar dan verifikasi email, lalu masuk. Simpan API key pada halaman API key, uji satu endpoint, lalu hubungkan klien melalui OAuth. Token Bearer manual tetap tersedia sebagai alternatif.</p><div class="actions"><a href="#register" class="button">Buat akun</a><a href="#login" class="button secondary">Masuk</a><a href="https://webapi.bps.go.id/documentation/" target="_blank" rel="noopener noreferrer">Dokumentasi BPS ↗</a></div></div>
+<section id="view-guide" class="wrap section" hidden><p class="eyebrow">Panduan singkat</p><h2>Akun, sumber data, dan izin aplikasi.</h2><div class="cards" style="margin:28px 0"><article class="card"><span class="badge">1 / Website ini</span><h3>Password akun</h3><p>Dipakai untuk masuk ke dashboard dan mengelola pengaturan Anda.</p></article><article class="card"><span class="badge">2 / Sumber BPS</span><h3>API key BPS</h3><p>Didapatkan dari Web API BPS. Disimpan terenkripsi agar server bisa mengambil data untuk Anda.</p></article><article class="card"><span class="badge">3 / Klien AI</span><h3>Izin aplikasi AI</h3><p>OAuth menerbitkan token otomatis setelah persetujuan Anda. Akses dapat dicabut pada Aplikasi terhubung. Token manual tersedia untuk klien lama.</p></article></div><div class="card"><h3>Mulai dari akun Anda</h3><p>Daftar dan verifikasi email, lalu masuk. Hubungkan klien melalui OAuth. Untuk memakai data BPS, simpan API key di dashboard dan gunakan Uji koneksi BPS. Token Bearer manual tetap tersedia sebagai alternatif.</p><div class="actions"><a href="#register" class="button">Buat akun</a><a href="#login" class="button secondary">Masuk</a><a href="https://webapi.bps.go.id/documentation/" target="_blank" rel="noopener noreferrer">Dokumentasi BPS ↗</a></div></div>
 <div class="section client-guide">
-  <h3>Pilih aplikasi Anda</h3>
-  <p class="small">Untuk koneksi jarak jauh, gunakan <code>https://www.mcpsatudataaceh.web.id/mcp</code>. Masuk saat diminta dan tinjau izin aplikasi.</p>
+  <h3>Koneksi jarak jauh dengan OAuth</h3>
+  <p>Tambahkan <code>https://www.mcpsatudataaceh.web.id/mcp</code> di aplikasi AI yang mendukung OAuth. Masuk saat diminta dan tinjau izin aplikasi. Server sudah berjalan di VPS sehingga Anda bisa langsung terhubung dari klien.</p>
   <details>
     <summary>ChatGPT Web</summary>
     <ol>
@@ -183,22 +197,27 @@
     <p class="small"><a href="https://code.visualstudio.com/docs/agents/reference/mcp-configuration">Dokumentasi VS Code</a></p>
   </details>
   <details>
-    <summary>Server lokal (STDIO) untuk Claude Desktop dan Antigravity</summary>
-    <p>Siapkan Python 3.11+. Dari direktori repositori, buat lingkungan virtual dan instal proyek.</p>
+    <summary>Pengaturan lanjutan · Jalankan server lokal dengan STDIO</summary>
+    <p>Pilih opsi ini jika ingin aplikasi AI menjalankan server sendiri di komputer Anda. Instal Python 3.11 atau lebih baru dan siapkan salinan repositori proyek.</p>
+    <h4>Windows · PowerShell</h4>
+    <p>Dari folder proyek, buat lingkungan virtual. Perintah pertama membuat <code>.venv\Scripts\python.exe</code> yang digunakan pada konfigurasi.</p>
+    <pre class="code"><code>py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .</code></pre>
+    <h4>macOS dan Linux · Terminal</h4>
     <pre class="code"><code>python3 -m venv .venv
 .venv/bin/python -m pip install -e .</code></pre>
-    <p>Pada Windows, gunakan <code>py -3</code> dan Python di <code>.venv/Scripts/python.exe</code>. Simpan <code>BPS_API_KEY</code> dalam file <code>.env</code> pribadi di direktori proyek jika memakai BPS.</p>
-    <p>Masukkan konfigurasi ini ke <code>claude_desktop_config.json</code> atau <code>mcp_config.json</code> di Antigravity. Sesuaikan path absolut Python, lalu muat ulang aplikasi.</p>
+    <p>Jika memakai data BPS, buat <code>.env</code> pribadi di folder proyek dan isi <code>BPS_API_KEY</code>. Untuk operasi SDGs Access, gunakan <code>BPS_SDGS_TOKEN</code> terpisah.</p>
+    <p>Gabungkan contoh berikut ke <code>claude_desktop_config.json</code> atau <code>mcp_config.json</code> Antigravity. Ganti <code>command</code> sesuai lokasi proyek, lalu muat ulang aplikasi.</p>
     <pre class="code"><code>{
   "mcpServers": {
     "satu-data-aceh-local": {
-      "command": "/path/ke/MCP_SatuDataAceh/.venv/bin/python",
+      "command": "C:/Projects/MCP_SatuDataAceh/.venv/Scripts/python.exe",
       "args": ["-m", "src.main"],
       "env": {"MCP_TRANSPORT": "stdio"}
     }
   }
 }</code></pre>
-    <p class="small">Untuk VS Code, pakai <code>servers</code> dan tambahkan <code>"type": "stdio"</code> pada entri server.</p>
+    <p>Di macOS dan Linux, contoh <code>command</code> adalah <code>/home/nama/MCP_SatuDataAceh/.venv/bin/python</code>. Di VS Code, gunakan <code>servers</code> dan tambahkan <code>"type": "stdio"</code>.</p>
   </details>
   <div class="message info"><strong>Uji koneksi</strong><p>Minta aplikasi mencari dataset inflasi Aceh dengan tool <code>search</code> dan menampilkan ID serta tautannya. Untuk BPS, jalankan <code>bps_request</code> dengan operasi <code>listDomains</code> dan parameter <code>{"type":"prov"}</code>. Hasilnya mencakup domain Aceh <code>1100</code>.</p></div>
 </div>

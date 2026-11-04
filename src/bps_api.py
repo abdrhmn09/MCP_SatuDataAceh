@@ -122,6 +122,23 @@ def status_error(code):
             429: "upstream_rate_limited"}.get(code, "upstream_error")
 
 
+def credential_invalid(payload):
+    """Identify an explicit rejection of the credential, not an operation's permissions."""
+    if not isinstance(payload, dict):
+        return False
+    errors = payload.get("errors")
+    envelopes = [payload, *(errors if isinstance(errors, list) else [])]
+    invalid = {
+        "invalid api key", "api key is invalid", "invalid key", "key is invalid",
+        "invalid token", "token is invalid", "token tidak valid", "api key tidak valid",
+    }
+    return any(
+        str(envelope.get(field, "")).lower().replace("-", " ").replace("_", " ").strip(" .") in invalid
+        for envelope in envelopes if isinstance(envelope, dict)
+        for field in ("status", "code", "message", "title", "detail")
+    )
+
+
 def rows(payload):
     """Extract sample rows from BPS pagination, JSON:API and nested service envelopes."""
     data = payload.get("data") if isinstance(payload, dict) else None
@@ -143,6 +160,8 @@ def rows(payload):
 def payload_error(payload):
     if not isinstance(payload, dict):
         return "upstream_invalid_response"
+    if credential_invalid(payload):
+        return "credential_rejected"
     data = payload.get("data")
     envelopes = [payload]
     if isinstance(data, list) and len(data) == 2 and isinstance(data[1], dict):

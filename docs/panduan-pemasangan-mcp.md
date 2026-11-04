@@ -1,5 +1,7 @@
 # Panduan pemasangan MCP Satu Data Aceh
 
+Mulai dengan **server jarak jauh melalui OAuth**. Server sudah berjalan di VPS, sehingga Anda cukup menambahkan URL MCP ke klien dan masuk. Bagian STDIO ditujukan untuk pengguna yang ingin menjalankan server sendiri.
+
 | Aplikasi | Mode yang bisa dipilih | Konfigurasi |
 |---|---|---|
 | ChatGPT Web | Server jarak jauh dengan OAuth | Tambahkan server MCP kustom |
@@ -63,16 +65,27 @@ Tambahkan entri ke `.vscode/mcp.json`, lalu jalankan server melalui **MCP: List 
 
 Rujukan [VS Code – MCP configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
 
-## Server lokal dengan STDIO
+## Pengaturan lanjutan untuk server lokal dengan STDIO
 
-Mode ini menjalankan proses Python di komputer Anda. Siapkan Python 3.11+ dan jalankan dari direktori repositori.
+Instal Python 3.11 atau lebih baru dan siapkan salinan repositori. Jalankan perintah berikut dari folder proyek.
+
+### Windows dengan PowerShell
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Perintah pertama membuat file `.venv\Scripts\python.exe` di komputer Anda. Gunakan file tersebut sebagai `command` pada konfigurasi klien.
+
+### macOS dan Linux dengan terminal
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
-Di Windows, gunakan `py -3 -m venv .venv` dan `.venv\Scripts\python.exe -m pip install -e .`. Buat `.env` pribadi di direktori repositori. Isi `BPS_API_KEY` jika memakai data BPS dan `BPS_SDGS_TOKEN` jika memakai SDGs Access.
+Untuk data BPS, buat file `.env` pribadi di folder proyek yang sama dengan `pyproject.toml`. Server membaca file tersebut saat mulai. Isi `BPS_API_KEY` untuk Web API BPS dan `BPS_SDGS_TOKEN` untuk SDGs Access jika diperlukan.
 
 ### Claude Desktop dan Antigravity
 
