@@ -153,6 +153,8 @@ Gateway Cloudflare dikelola di [repositori Worker mandiri](https://github.com/ab
 
 Cakupan operasi: domain, subjek, variabel/dimensi, periode, data dinamis, tabel statis/CSA, siaran pers, publikasi, indikator strategis, infografis, berita, glosarium, perdagangan, klasifikasi, sensus, Yearbook Dataset, SDGs/SDDS dan SDGs Access. Ketersediaan tetap bergantung pada data/API/key/kuota BPS. File PDF/unduhan publikasi mengikuti tautan yang disediakan upstream.
 
+Di **Akun saya → API key**, tombol **Uji koneksi BPS** menjalankan satu sampel untuk setiap operasi dan menampilkan hasil bertahap. Operasi dengan kredensial yang belum tersimpan ditandai **Belum diuji**. Hasil berlaku untuk sampel tersebut dan pengujian dapat dibatalkan. Pengujian dibatasi satu kali per akun setiap 10 menit.
+
 Contoh argumen tool (tanpa credential):
 
 ```json

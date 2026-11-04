@@ -254,7 +254,7 @@ class AccountMiddleware:
         if scope['type']!='http': return await self.app(scope,receive,send)
         path=scope['path']
         is_mcp=path=='/mcp' or path.startswith('/mcp/') or path=='/sse' or path.startswith('/messages')
-        is_browser=path=='/api/bps'
+        is_browser=path in {'/api/bps','/api/bps/connection-test'}
         if not is_mcp and not is_browser: return await self.app(scope,receive,send)
         request=Request(scope,receive)
         if request.method=='OPTIONS': return await self.app(scope,receive,send)

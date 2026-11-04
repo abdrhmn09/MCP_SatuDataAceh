@@ -29,7 +29,12 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
             key=server._account_key()
             return JSONResponse({'user':accounts.principal.get()['id'],'has_key':bool(key)})
         async def bps(request): return JSONResponse({'ok':bool(server._account_key())})
-        self.app=install(Starlette(routes=[Route('/mcp',mcp,methods=['POST']),Route('/api/bps',bps,methods=['POST']),Route('/messages/',mcp,methods=['POST'])]))
+        self.app=install(Starlette(routes=[
+            Route('/mcp',mcp,methods=['POST']),
+            Route('/api/bps',bps,methods=['POST']),
+            Route('/api/bps/connection-test',server.bps_connection_test,methods=['POST']),
+            Route('/messages/',mcp,methods=['POST']),
+        ]))
         self.client=httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app),base_url='https://app.test',headers={'Origin':'https://app.test'})
 
     async def asyncTearDown(self):
@@ -79,6 +84,33 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
             r=await self.client.post('/api/bps',json={},headers=headers)
             self.assertEqual(r.status_code,403)
         self.assertEqual((await self.client.post('/api/account/login',json={},headers={'Origin':'https://evil.test'})).status_code,403)
+
+    async def test_bps_diagnostic_uses_only_the_authenticated_accounts_keys(self):
+        endpoint = '/api/bps/connection-test'
+        self.assertEqual((await self.client.post(endpoint)).status_code,401)
+        alice = (await self.register_login())['user']['id']
+        bob = self.vault.register('diagnostic-other@example.test', 'other synthetic password')
+        self.vault.save_key(alice,'sdgs','alice-sdgs-fixture')
+        self.vault.save_key(bob,'bps','bob-bps-fixture')
+        with patch.object(server, '_read_bps_payload', AsyncMock(return_value={'data':[{'id':2}]})) as upstream, \
+                patch.object(server.asyncio, 'sleep', AsyncMock()):
+            self.assertEqual((await self.client.post(endpoint, headers={'Origin':'https://evil.test'})).status_code,403)
+            self.assertEqual((await self.client.post(endpoint, headers={'X-CSRF-Token':'wrong'})).status_code,403)
+            response = await self.client.post(endpoint)
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.headers['x-accel-buffering'],'no')
+            events = [json.loads(line) for line in response.text.splitlines()]
+            self.assertEqual(len(events[0]['operations']),59)
+            self.assertEqual(events[-1],{'type':'done'})
+            statuses = [event['status'] for event in events if event['type']=='operation']
+            self.assertEqual(statuses.count('not_tested'),51)
+            self.assertEqual(statuses.count('passed'),8)
+            self.assertEqual(upstream.await_count,8)
+            self.assertTrue(all(call.args[1]=={'Token':'alice-sdgs-fixture'} for call in upstream.await_args_list))
+            self.assertNotIn('alice-sdgs-fixture',response.text)
+            self.assertNotIn('bob-bps-fixture',response.text)
+            retry = await self.client.post(endpoint)
+            self.assertEqual(json.loads(retry.text)['type'],'error')
 
     async def test_email_reset_revokes_access_and_rejects_replay(self):
         profile = await self.register_login()

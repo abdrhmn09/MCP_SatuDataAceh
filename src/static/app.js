@@ -6,6 +6,7 @@ state.oauth = sessionStorage.getItem('oauth_request') || '';
 state.config = {};
 const authPages = new Set(['login', 'register', 'resend']);
 let toastTimer;
+let bpsDiagnostic;
 class ApiError extends Error { constructor(message, status, code) { super(message); this.status = status; this.code = code; } }
 function message(id, text, type = 'error') { const el = $(id); el.textContent = text; el.className = 'message ' + type; el.hidden = !text; }
 function toast(text) { clearTimeout(toastTimer); $('toast').textContent = text; $('toast').hidden = false; toastTimer = setTimeout(() => { $('toast').hidden = true; }, 5500); }
@@ -49,7 +50,11 @@ function updateAccount() {
   const data = state.profile;
   $('navAccount').textContent = data ? 'Akun saya' : 'Masuk / daftar'; $('navAccount').href = data ? '#dashboard' : '#login';
   $('explorerLoginNotice').hidden = Boolean(data);
-  if (!data) return;
+  if (!data) {
+    bpsDiagnostic?.abort();
+    $('bpsDiagnostic').hidden = true;
+    return;
+  }
   $('sidebarEmail').textContent = data.user.email; $('profileEmail').textContent = data.user.email;
   const completed = 1 + Number(Boolean(hasKey())) + Number(data.tokens.length > 0 || data.apps?.length > 0);
   $('setupCount').textContent = completed + ' dari 3 selesai'; $('setupProgress').style.width = (completed / 3 * 100) + '%';
@@ -64,7 +69,7 @@ function updateKey() {
   $('keyState').textContent = saved ? 'Terakhir diperbarui ' + date(saved.updated) + '. Nilai key tidak ditampilkan kembali.' : 'Belum ada key untuk layanan ini.';
   $('keyInputLabel').textContent = saved ? 'API key pengganti' : 'API key baru';
   $('saveKey').textContent = saved ? 'Simpan pengganti' : 'Simpan API key';
-  $('testKey').disabled = !saved; $('deleteKey').disabled = !saved;
+  $('testKey').disabled = Boolean(bpsDiagnostic) || !(hasKey() || hasKey('sdgs')); $('deleteKey').disabled = !saved;
 }
 function renderTokens() {
   const tokens = state.profile?.tokens || []; $('tokenCount').textContent = tokens.length + ' token';
@@ -222,13 +227,105 @@ $('keyForm').addEventListener('submit', async event => {
   });
   updateKey();
 });
-$('testKey').addEventListener('click', () => busy('testKey', 'Menghubungi BPS…', async () => {
+const diagnosticLabels = {
+  pending: 'Menunggu', passed: 'Berhasil', failed: 'Gagal',
+  unavailable: 'Data tidak tersedia', not_tested: 'Belum diuji'
+};
+
+$('cancelBpsDiagnostic').addEventListener('click', () => bpsDiagnostic?.abort());
+$('testKey').addEventListener('click', async () => {
+  if (bpsDiagnostic) return;
+  const controller = new AbortController();
+  bpsDiagnostic = controller;
+  const rows = new Map();
+  const table = $('bpsDiagnosticRows');
+  const progress = $('bpsDiagnosticProgress');
+  const summary = $('bpsDiagnosticSummary');
+  const button = $('testKey');
+  const cancel = $('cancelBpsDiagnostic');
+  button.disabled = true;
+  button.textContent = 'Sedang menguji…';
+  cancel.hidden = false;
+  table.replaceChildren();
+  table.closest('.diagnostic-table').hidden = true;
+  $('bpsDiagnostic').hidden = false;
+  progress.value = 0;
+  summary.textContent = 'Menyiapkan pengujian…';
+
+  function showSummary(prefix = '') {
+    const counts = { passed: 0, failed: 0, unavailable: 0, not_tested: 0 };
+    for (const { status } of rows.values()) {
+      if (status !== 'pending') counts[status]++;
+    }
+    progress.value = Object.values(counts).reduce((total, count) => total + count, 0);
+    summary.textContent = prefix + [`${progress.value}/${rows.size} diproses`,
+      ...Object.keys(counts).map(status => `${counts[status]} ${diagnosticLabels[status].toLowerCase()}`)].join(' · ');
+  }
+
+  function updateRow(row, status, reason) {
+    row.status = status;
+    row.cells[2].textContent = diagnosticLabels[status];
+    row.cells[3].textContent = reason;
+  }
+
+  let finished = false;
+  function handle(event) {
+    if (event.type === 'error') throw new Error(event.message);
+    if (event.type === 'start') {
+      progress.max = event.operations.length;
+      for (const item of event.operations) {
+        const tr = table.insertRow();
+        const cells = Array.from({ length: 4 }, () => tr.insertCell());
+        cells[0].textContent = item.operation;
+        cells[1].textContent = item.credential === 'sdgs' ? 'SDGs Access' : 'Web API BPS';
+        const row = { cells };
+        updateRow(row, 'pending', '—');
+        rows.set(item.operation, row);
+      }
+      table.closest('.diagnostic-table').hidden = false;
+      showSummary();
+    } else if (event.type === 'operation') {
+      const row = rows.get(event.operation);
+      if (row) updateRow(row, event.status, event.message);
+      showSummary();
+    } else if (event.type === 'done') {
+      finished = true;
+    }
+  }
+
   try {
-    const sdgs = $('keyService').value === 'sdgs';
-    const data = await request('/api/bps', { operation: sdgs ? 'listSdgsGoals' : 'listDomains', parameters: sdgs ? {} : { type: 'all' } });
-    message('keyFeedback', data.ok ? 'Permintaan uji berhasil pada satu endpoint. Akses operasi lain belum diuji.' : 'Key tersimpan, tetapi BPS belum menerima permintaan. Periksa key, kuota, atau ketersediaan layanan BPS.', data.ok ? '' : 'error');
-  } catch (error) { message('keyFeedback', error.message); }
-}));
+    const response = await fetch('/api/bps/connection-test', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'X-CSRF-Token': state.csrf }, signal: controller.signal
+    });
+    if (!response.ok) throw new Error(friendly(await response.json(), response.status));
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    try {
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const lines = (buffer + value).split('\n');
+        buffer = lines.pop();
+        for (const line of lines) if (line) handle(JSON.parse(line));
+      }
+      if (buffer.trim()) handle(JSON.parse(buffer));
+    } finally { await reader.cancel().catch(() => {}); }
+    if (!finished) throw new Error('Koneksi pengujian terputus.');
+  } catch (error) {
+    const reason = controller.signal.aborted ? 'Pengujian dibatalkan.' : error.message;
+    for (const row of rows.values()) {
+      if (row.status === 'pending') updateRow(row, 'not_tested', reason);
+    }
+    if (rows.size) showSummary(reason + ' ');
+    else summary.textContent = reason;
+  } finally {
+    bpsDiagnostic = null;
+    cancel.hidden = true;
+    button.textContent = 'Uji koneksi BPS';
+    updateKey();
+  }
+});
 $('deleteKey').addEventListener('click', () => { $('deleteKeyConfirm').hidden = false; });
 $('cancelDeleteKey').addEventListener('click', () => { $('deleteKeyConfirm').hidden = true; });
 $('confirmDeleteKey').addEventListener('click', () => busy('confirmDeleteKey', 'Menghapus…', async () => {

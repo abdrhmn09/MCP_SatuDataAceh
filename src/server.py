@@ -3,6 +3,7 @@ from io import StringIO
 from importlib.resources import files
 from pathlib import Path
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import asyncio
 import httpx
 import ipaddress
@@ -25,7 +26,7 @@ except ImportError:
 from pydantic import BaseModel, Field
 from .data_quality import clean_cell, numeric, summarize, audit_coverage
 from starlette.requests import Request
-from starlette.responses import JSONResponse, FileResponse
+from starlette.responses import JSONResponse, FileResponse, StreamingResponse
 
 def _redact_secret(value: str) -> str:
     value = re.sub(r"(/key/)[^/?#\s]+", r"\1***", value, flags=re.IGNORECASE)
@@ -77,9 +78,10 @@ except ImportError:
     from cache import muat_katalog, catalog_status
 
 try:
-    from . import bps_api, accounts
+    from . import bps_api, bps_diagnostics, accounts
 except ImportError:
     import bps_api
+    import bps_diagnostics
     import accounts
 
 
@@ -88,6 +90,10 @@ def _request_headers():
         return mcp.get_context().request_context.request.headers
     except (LookupError, RuntimeError, AttributeError, ValueError):
         return {}
+
+
+class MissingBpsCredential(ValueError):
+    pass
 
 
 def _account_key(service='bps'):
@@ -103,7 +109,7 @@ def _account_key(service='bps'):
             raise ValueError('Sesi atau token telah dicabut.')
         key = vault.get_key(user['id'],service)
         if not key:
-            raise ValueError('Simpan token SDGs terpisah di halaman API key untuk operasi SDGs Access.' if service == 'sdgs' else 'Simpan API key BPS di dashboard akun terlebih dahulu.')
+            raise MissingBpsCredential('Simpan token SDGs terpisah di halaman API key untuk operasi SDGs Access.' if service == 'sdgs' else 'Simpan API key BPS di dashboard akun terlebih dahulu.')
         return key
     return None
 
@@ -450,6 +456,18 @@ async def _read_bps_payload(url: str, headers: dict | None = None) -> object:
     async with asyncio.timeout(30):
         async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=False) as client:
             async with client.stream("GET", url, headers=headers) as response:
+                # Keep a small JSON error envelope for diagnosis without exposing HTML or URLs.
+                if response.is_error:
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        if len(body) + len(chunk) > 16_384:
+                            break
+                        body.extend(chunk)
+                    else:
+                        try:
+                            response.extensions["bps_error_payload"] = json.loads(body)
+                        except (UnicodeError, ValueError):
+                            pass
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes():
                     size += len(chunk)
@@ -926,21 +944,94 @@ async def health(_: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "satu-data-aceh-mcp", "catalog": catalog_status()})
 
 
-async def _execute_bps(operation: str, parameters: dict, headers) -> dict:
+def _bps_retry_delay(response):
+    value = response.headers.get("Retry-After")
+    if value is None:
+        return 1.0
+    if value.isdecimal():
+        return max(1.0, min(float(value), 86_400.0))
+    try:
+        when = parsedate_to_datetime(value)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return max(1.0, (when - datetime.now(timezone.utc)).total_seconds())
+    except (TypeError, ValueError, OverflowError):
+        return 1.0
+
+
+async def _execute_bps(operation: str, parameters: dict, headers, *, read=None, budget=30.0) -> dict:
     if operation not in bps_api.OPERATIONS:
         return bps_api.catalog(operation)
-    key = _account_key(bps_api.OPERATIONS[operation]["credential"])
-    if key is None:
-        service = bps_api.OPERATIONS[operation]["credential"]
-        key = bps_api.credential(headers, os.getenv('BPS_SDGS_TOKEN','') if service == 'sdgs' else BPS_API_KEY, service)
-    url, public_url, upstream_headers = bps_api.build_request(operation, parameters, key)
+    service = bps_api.OPERATIONS[operation]["credential"]
     try:
-        payload = await _read_bps_payload(url, upstream_headers)
-    except (httpx.HTTPError, TimeoutError, ValueError):
-        return {"ok": False, "error": "upstream_error", "message": "BPS tidak dapat diakses atau respons melebihi batas; periksa key dan parameter."}
-    payload = bps_api.sanitize(payload, [key])
-    failed = not isinstance(payload, dict) or bool(payload.get("errors")) or str(payload.get("status", "")).lower() == "error" or not any(k in payload for k in ("data", "datacontent"))
-    return {"ok": not failed, "operation": operation, "url": public_url, "data": payload}
+        key = _account_key(service)
+    except MissingBpsCredential as error:
+        return bps_api.failure(operation, "missing_credential", str(error))
+    except ValueError as error:
+        return bps_api.failure(operation, "invalid_request", str(error))
+    if key is None:
+        try:
+            key = bps_api.credential(headers, os.getenv("BPS_SDGS_TOKEN", "") if service == "sdgs" else BPS_API_KEY, service)
+        except ValueError as error:
+            return bps_api.failure(operation, "missing_credential", str(error))
+    try:
+        url, public_url, upstream_headers = bps_api.build_request(operation, parameters, key)
+    except ValueError as error:
+        return bps_api.failure(operation, "invalid_request", str(error))
+    public_url = bps_api.sanitize(public_url, [key])
+    read = read or _read_bps_payload
+    deadline = asyncio.get_running_loop().time() + budget
+    for attempt in range(2):
+        retry_delay = None
+        message = None
+        details = {"url": public_url}
+        try:
+            async with asyncio.timeout_at(deadline):
+                payload = await read(url, upstream_headers)
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            details["http_status"] = status
+            code = bps_api.status_error(status)
+            payload = error.response.extensions.get("bps_error_payload")
+            if isinstance(payload, dict) and status not in {401, 403, 429}:
+                reason = str(payload.get("message", "")).lower()
+                if bps_api.payload_error(payload) == "data_unavailable" or (
+                    status == 404 and reason.strip().rstrip(".") == "tabel tidak ditemukan"
+                ):
+                    code = "data_unavailable"
+                    if operation == "getCsaTable" and "year" not in parameters:
+                        message = "Tabel tidak ditemukan. Gunakan id dan latest_period dari listCsaTables pada domain yang sama untuk mengisi id dan year."
+                elif reason.startswith("invalid parameter:"):
+                    code = "upstream_parameter_rejected"
+                    message = "BPS menolak parameter yang lolos validasi katalog."
+                    if operation == "getClassification" and "model may contain letters" in reason:
+                        message = "BPS menolak angka pada parameter model, sedangkan katalog BPS mendokumentasikan model dengan angka."
+                elif "service is currently unavailable" in reason:
+                    message = "BPS melaporkan bahwa layanan ini sedang tidak tersedia."
+            if status in {429, 500, 502, 503, 504}:
+                delay = _bps_retry_delay(error.response)
+                if status == 429 or "Retry-After" in error.response.headers:
+                    details["retry_after"] = delay
+                if status != 429:
+                    retry_delay = delay
+        except (httpx.TimeoutException, TimeoutError):
+            code, retry_delay = "upstream_timeout", 1.0
+        except httpx.TransportError:
+            code, retry_delay = "upstream_error", 1.0
+        except (httpx.HTTPError, ValueError):
+            code = "upstream_invalid_response"
+        else:
+            code = bps_api.payload_error(payload)
+            if code != "upstream_invalid_response":
+                details["data"] = bps_api.sanitize(payload, [key])
+            if code is None:
+                return {"ok": True, "operation": operation, **details}
+        if attempt == 0 and retry_delay is not None and deadline - asyncio.get_running_loop().time() > retry_delay + 1:
+            await asyncio.sleep(retry_delay)
+            continue
+        if code == "credential_rejected" and service == "sdgs":
+            message = "BPS menolak token SDGs atau izin untuk operasi ini."
+        return bps_api.failure(operation, code, message, **details)
 
 
 @mcp.tool()
@@ -955,11 +1046,8 @@ async def bps_endpoints(operation: str = "", query: str = "") -> dict[str, objec
 async def bps_request(operation: str, parameters: dict[str, str | int] | None = None) -> dict[str, object]:
     """Jalankan operasi read-only BPS pada semua domain. Temukan operation dan parameter melalui bps_endpoints. Key berasal dari header koneksi, bukan argumen tool. Pertahankan pagination dan dimensi respons asli."""
     if not await _rate_limiter.allow():
-        return {"error": "rate_limited"}
-    try:
-        return await _execute_bps(operation, parameters or {}, _request_headers())
-    except ValueError as error:
-        return {"ok": False, "error": "invalid_request", "message": str(error)}
+        return bps_api.failure(operation, "rate_limited", "Batas permintaan MCP tercapai.")
+    return await _execute_bps(operation, {} if parameters is None else parameters, _request_headers())
 
 
 @mcp.tool()
@@ -969,7 +1057,11 @@ async def bps_check_key(service: str = "bps") -> dict[str, object]:
         return {"ok": False, "error": "service harus bps atau sdgs"}
     operation = 'listDomains' if service == 'bps' else 'listSdgsGoals'
     result = await bps_request(operation, {'type':'all'} if service == 'bps' else {})
-    return {'ok':result.get('ok',False),'service':service,'tested_operation':operation,'verification_scope':'single_endpoint','message':'Permintaan uji berhasil. Akses ke operasi lain belum diuji.' if result.get('ok') else 'Permintaan uji belum berhasil; periksa credential layanan ini dan koneksi BPS.'}
+    summary = {"ok": result["ok"], "service": service, "tested_operation": operation,
+               "verification_scope": "single_endpoint"}
+    if result["ok"]:
+        return {**summary, "message": "Permintaan uji berhasil. Akses ke operasi lain belum diuji."}
+    return {**summary, "error": result["error"], "message": result["message"]}
 
 
 @mcp.custom_route("/", methods=["GET"], include_in_schema=False)
@@ -999,23 +1091,114 @@ async def bps_endpoint_catalog(request: Request):
 @mcp.custom_route("/api/bps", methods=["POST"], include_in_schema=False)
 async def bps_browser_request(request: Request):
     if not await _rate_limiter.allow(accounts.principal.get()["id"] if accounts.principal.get() else request.client.host if request.client else "local"):
-        return JSONResponse({"error": "rate_limited"}, status_code=429)
+        return JSONResponse(bps_api.failure(None, "rate_limited", "Batas permintaan MCP tercapai."), status_code=429)
     try:
         raw = bytearray()
         async for chunk in request.stream():
             raw.extend(chunk)
             if len(raw) > 16_384:
-                return JSONResponse({"error": "body_too_large"}, status_code=413)
+                return JSONResponse(bps_api.failure(None, "body_too_large", "Permintaan terlalu besar."), status_code=413)
         body = json.loads(raw)
         if not isinstance(body, dict) or not isinstance(body.get("operation"), str):
             raise ValueError("operation wajib diisi.")
         # Browser requests must supply their own credentials; never use operator's key.
-        if not accounts.principal.get():
-            bps_api.credential(request.headers, service=bps_api.OPERATIONS.get(body["operation"], {}).get("credential", "bps"))
+        if not accounts.principal.get() and body["operation"] in bps_api.OPERATIONS:
+            service = bps_api.OPERATIONS[body["operation"]]["credential"]
+            try:
+                bps_api.credential(request.headers, service=service)
+            except ValueError as error:
+                return JSONResponse(bps_api.failure(body["operation"], "missing_credential", str(error)),
+                                    status_code=400, headers={"Cache-Control": "no-store"})
         result = await _execute_bps(body["operation"], body.get("parameters", {}), request.headers)
-        return JSONResponse(result, headers={"Cache-Control": "no-store"})
+        status = 400 if result.get("error") in {"unknown_operation", "invalid_request", "missing_credential"} else 200
+        return JSONResponse(result, status_code=status, headers={"Cache-Control": "no-store"})
     except (ValueError, TypeError) as error:
-        return JSONResponse({"ok": False, "message": str(error)}, status_code=400, headers={"Cache-Control": "no-store"})
+        return JSONResponse(bps_api.failure(None, "invalid_request", str(error)), status_code=400, headers={"Cache-Control": "no-store"})
+
+
+_active_bps_diagnostics: set[str] = set()
+
+
+async def _bps_diagnostic_events(user, vault):
+    uid = user["id"]
+    if uid in _active_bps_diagnostics or len(_active_bps_diagnostics) >= 2:
+        yield {"type": "error", "message": "Pengujian lain sedang berjalan. Coba lagi setelah selesai."}
+        return
+    _active_bps_diagnostics.add(uid)
+    try:
+        if not vault.throttle("bps-diagnostic:" + uid, 1, 600):
+            yield {"type": "error", "message": "Uji koneksi dapat dijalankan satu kali setiap 10 menit."}
+            return
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 240
+        next_call = loop.time()
+
+        async def paced_read(url, headers):
+            nonlocal next_call
+            if next_call > loop.time():
+                await asyncio.sleep(next_call - loop.time())
+            next_call = loop.time() + 1
+            return await _read_bps_payload(url, headers)
+
+        operations = {item["operation"]: item for item in bps_api.catalog()["operations"]}
+        sources = {source for deps in bps_diagnostics.DEPENDENCIES.values() for source in deps}
+        previous = {}
+        blocked = {}
+        missing = {service for service in ("bps", "sdgs") if not vault.get_key(uid, service)}
+        yield {"type": "start", "operations": list(operations.values())}
+        session_ended = False
+        for name in bps_diagnostics.ordered_operations():
+            service = operations[name]["credential"]
+            if not session_ended:
+                session_ended = not vault.identity(user["raw"])
+            parameters = None
+            if session_ended:
+                code, message = "session_ended", "Sesi akun berakhir."
+            elif loop.time() >= deadline:
+                code, message = "deadline", "Batas waktu pengujian tercapai."
+            elif service in missing:
+                code, message = "missing_credential", "Kredensial belum disimpan."
+            elif service in blocked:
+                code, message = blocked[service]
+            else:
+                parameters = bps_diagnostics.sample_parameters(name, previous)
+                code = "missing_sample"
+                deps = ", ".join(bps_diagnostics.DEPENDENCIES.get(name, ()))
+                message = f"Parameter sampel belum tersedia dari {deps}." if deps else "Parameter sampel belum tersedia."
+            if parameters is None:
+                yield {"type": "operation", "operation": name, "status": "not_tested", "code": code, "message": message}
+                continue
+            result = await _execute_bps(name, parameters, {}, read=paced_read, budget=min(20, deadline - loop.time()))
+            code = result.get("error", "")
+            if code == "upstream_rate_limited":
+                blocked[service] = (code, "Pengujian layanan ini dihentikan karena pembatasan BPS.")
+            if name in sources and result["ok"]:
+                # Keep only the bounded rows needed by dependent requests.
+                previous[name] = ({"ok": True, "data": {"data": bps_api.rows(result["data"])[:50]}}, parameters)
+            status = "passed" if result["ok"] else {
+                "data_unavailable": "unavailable", "missing_credential": "not_tested",
+            }.get(code, "failed")
+            yield {"type": "operation", "operation": name, "status": status, "code": code,
+                   "message": result.get("message", "BPS mengembalikan data untuk sampel ini.")}
+        yield {"type": "done"}
+    finally:
+        _active_bps_diagnostics.discard(uid)
+
+
+@mcp.custom_route("/api/bps/connection-test", methods=["POST"], include_in_schema=False)
+async def bps_connection_test(_: Request):
+    user = accounts.principal.get()
+    if not user or user["kind"] != "session":
+        return JSONResponse({"error": "login_required"}, status_code=401, headers={"Cache-Control": "no-store"})
+
+    async def stream():
+        from contextlib import aclosing
+        async with aclosing(_bps_diagnostic_events(user, accounts.get_vault())) as events:
+            async for event in events:
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 @mcp.tool()

@@ -97,3 +97,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .home-intro, .home-section { grid-template-columns: minmax(0, 1fr); }
   .home-intro { gap: 2rem; }
 }
+
+#bpsDiagnosticProgress { width: 100%; accent-color: var(--brand); }
+.diagnostic-table { overflow-x: auto; }
+.diagnostic-table table { width: 100%; border-collapse: collapse; }
+.diagnostic-table th, .diagnostic-table td {
+  padding: .6rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.diagnostic-table th { background: var(--brand-soft); }
+.diagnostic-table td:nth-child(3) { min-width: 7rem; }

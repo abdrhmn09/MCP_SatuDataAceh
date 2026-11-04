@@ -187,7 +187,9 @@ class Vault:
             raise ValueError('Tempel nilai API key saja, bukan URL atau header Authorization.')
         if re.search(r'\s',value):
             raise ValueError('Ada spasi atau baris baru di tengah key. Salin ulang nilai key dari akun BPS.')
-        if not re.fullmatch(r'[A-Za-z0-9._~+/=-]{8,512}',value):
+        if service == 'sdgs' and not re.fullmatch(r'[!-~]{8,512}',value):
+            raise ValueError('Format token SDGs belum sesuai. Salin hanya nilai token SDGs.')
+        if service == 'bps' and not re.fullmatch(r'[A-Za-z0-9._~+/=-]{8,512}',value):
             raise ValueError('Format key belum sesuai. Gunakan 8–512 karakter token dan salin hanya nilai key.')
         nonce = secrets.token_bytes(12)
         ciphertext = nonce + self.cipher.encrypt(nonce,value.encode(),f'{uid}:{service}'.encode())
