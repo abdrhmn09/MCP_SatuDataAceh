@@ -93,7 +93,7 @@ docker compose up -d --build
 Contoh konfigurasi lengkap ada di [deploy/nginx.conf](deploy/nginx.conf), termasuk route akun, explorer, SSE, Streamable HTTP, CORS dan header. Sebelum upgrade, cadangkan database dan master key secara terpisah. Jalankan backend baru terlebih dahulu agar migrasi SQLite selesai dan cek `/health` serta `/api/account/config`. Setelah itu, pasang landing page Nginx statis:
 
 ```bash
-sudo install -m 644 public/index.html public/app.js public/styles.css /var/www/mcpsatudataaceh.web.id/
+sudo install -m 644 public/index.html public/app.js public/styles.css public/logo.svg public/favicon.svg /var/www/mcpsatudataaceh.web.id/
 sudo install -m 644 deploy/nginx.conf /etc/nginx/sites-available/mcpsatudataaceh.web.id
 sudo nginx -t && sudo systemctl reload nginx
 ```

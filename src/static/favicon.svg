@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="title">
+  <title id="title">Ikon MCP Satu Data Aceh</title>
+  <rect width="128" height="128" rx="26" fill="#245741"/>
+  <path d="M23 62h7l34-29 34 29h7" fill="none" stroke="#fffdf8" stroke-width="8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m36 91 28-14 28 10" fill="none" stroke="#dce8c9" stroke-width="5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#dce8c9">
+    <circle cx="36" cy="91" r="6.5"/>
+    <circle cx="64" cy="77" r="6.5"/>
+    <circle cx="92" cy="87" r="6.5"/>
+  </g>
+</svg>

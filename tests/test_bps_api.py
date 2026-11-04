@@ -36,7 +36,7 @@ class BpsApiTests(unittest.TestCase):
 
     def test_landing_artifacts_identical(self):
         root = Path(__file__).parents[1]
-        for name in ('index.html','app.js','styles.css'):
+        for name in ('index.html','app.js','styles.css','logo.svg','favicon.svg'):
             self.assertEqual((root/'public'/name).read_bytes(), (root/'src/static'/name).read_bytes())
 
 

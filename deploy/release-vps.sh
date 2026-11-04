@@ -18,7 +18,7 @@ flock -n 9 || { echo "Deployment lain sedang berjalan." >&2; exit 1; }
 service=mcp-satudataaceh.service
 webroot=/var/www/mcpsatudataaceh.web.id
 domain=www.mcpsatudataaceh.web.id
-assets=(app.js styles.css index.html)
+assets=(app.js styles.css logo.svg favicon.svg index.html)
 base=$(git rev-parse HEAD)
 test -n "$(git branch --show-current)"
 test -z "$(git status --porcelain)"
@@ -63,7 +63,9 @@ with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as databas
 PY
 sudo -n install -d -m 700 "$backup/web"
 for asset in "${assets[@]}"; do
-    sudo -n cp -a -- "$webroot/$asset" "$backup/web/$asset"
+    if sudo -n test -f "$webroot/$asset"; then
+        sudo -n cp -a -- "$webroot/$asset" "$backup/web/$asset"
+    fi
 done
 echo "Cadangan rilis tersimpan di $backup."
 
@@ -85,8 +87,13 @@ finish() {
         echo "Deployment gagal. Memulihkan commit $base dan aset sebelumnya." >&2
         if ((web_changed)); then
             for asset in "${assets[@]}"; do
-                swap_asset "$backup/web/$asset" "$asset" ||
-                    echo "Gagal memulihkan aset $asset." >&2
+                if sudo -n test -f "$backup/web/$asset"; then
+                    swap_asset "$backup/web/$asset" "$asset" ||
+                        echo "Gagal memulihkan aset $asset." >&2
+                else
+                    sudo -n rm -f -- "$webroot/$asset" ||
+                        echo "Gagal menghapus aset baru $asset." >&2
+                fi
             done
         fi
         if ! git reset --keep "$base" || ! sudo -n systemctl restart "$service"; then

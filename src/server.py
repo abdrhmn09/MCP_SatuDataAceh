@@ -1084,6 +1084,12 @@ async def app_styles(_: Request):
     return FileResponse(Path(__file__).parent / "static" / "styles.css", media_type="text/css", headers={"Cache-Control":"no-cache"})
 
 
+@mcp.custom_route("/logo.svg", methods=["GET"], include_in_schema=False)
+@mcp.custom_route("/favicon.svg", methods=["GET"], include_in_schema=False)
+async def branding_asset(request: Request):
+    return FileResponse(Path(__file__).parent / "static" / Path(request.url.path).name, media_type="image/svg+xml")
+
+
 @mcp.custom_route("/api/bps/endpoints", methods=["GET"], include_in_schema=False)
 async def bps_endpoint_catalog(request: Request):
     try:
