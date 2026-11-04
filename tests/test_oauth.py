@@ -35,7 +35,7 @@ class OAuthTests(unittest.IsolatedAsyncioTestCase):
             return JSONResponse({'user': principal.get()['id']})
         self.app = install(Starlette(routes=[Route('/mcp', mcp, methods=['POST']), Route('/sse', mcp)]))
         self.http = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url='https://app.test', follow_redirects=False)
-        self.uid, self.recovery = self.vault.register('oauth@example.test', 'synthetic password for OAuth')
+        self.uid = self.vault.register('oauth@example.test', 'synthetic password for OAuth')
         self.vault.verify_email(self.vault.verification_token(self.uid))
         self.session = self.vault.login('oauth@example.test', 'synthetic password for OAuth')
         self.http.cookies.set('__Host-mcp_session', self.session)
@@ -163,7 +163,7 @@ class OAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_cross_account_and_session_binding(self):
         pending = await self.pending()
         await self.http.post('/api/oauth/consent', headers=self.headers, json={'request': pending})
-        other, _ = self.vault.register('other@example.test', 'another synthetic password')
+        other = self.vault.register('other@example.test', 'another synthetic password')
         self.vault.verify_email(self.vault.verification_token(other))
         other_session = self.vault.login('other@example.test', 'another synthetic password')
         self.http.cookies.set('__Host-mcp_session', other_session)
@@ -171,7 +171,7 @@ class OAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.store.apps(other), [])
 
-    async def test_expiry_password_recovery_and_app_revocation(self):
+    async def test_password_change_and_app_revocation(self):
         tokens = (await self.exchange(await self.code())).json()
         app = self.store.apps(self.uid)[0]
         self.store.revoke_app('someone-else', app['id'])
@@ -183,6 +183,21 @@ class OAuthTests(unittest.IsolatedAsyncioTestCase):
         self.vault.change_password(self.uid, 'synthetic password for OAuth', 'changed synthetic password')
         self.assertIsNone(self.store.identity(tokens['access_token'], self.resource))
         self.assertEqual((await self.refresh(tokens['refresh_token'])).status_code, 400)
+
+    async def test_account_deletion_removes_grants_and_pending_consent(self):
+        tokens = (await self.exchange(await self.code())).json()
+        pending = await self.pending()
+        inspection = await self.http.post('/api/oauth/consent', headers=self.headers, json={'request': pending})
+        self.assertEqual(inspection.status_code, 200)
+        _, link = self.vault.delete_link(self.uid, self.session, 'synthetic password for OAuth')
+        response = await self.http.post('/api/account/delete-confirm', headers=self.headers,
+                                        json={'token':link, 'confirm':True})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(self.store.identity(tokens['access_token'], self.resource))
+        self.assertEqual((await self.refresh(tokens['refresh_token'])).status_code, 400)
+        with self.vault.db() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM oauth_grants').fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT count(*) FROM oauth_pending').fetchone()[0], 0)
 
     async def test_invalid_registration_and_authorization_no_unsafe_redirect(self):
         for uri in ['javascript:alert(1)', 'http://public.test/cb', 'https://client.test/cb#fragment', 'https://user:pass@client.test/cb']:
@@ -240,7 +255,7 @@ class OAuthTests(unittest.IsolatedAsyncioTestCase):
         tokens = (await self.exchange(await self.code())).json()
         with self.vault.db() as db: db.execute('UPDATE oauth_access SET expires=0')
         self.assertIsNone(self.store.identity(tokens['access_token'], self.resource))
-        self.vault.recover('oauth@example.test', self.recovery, 'recovered synthetic password')
+        self.vault.reset_password(self.vault.reset_link('oauth@example.test'), 'recovered synthetic password')
         self.assertEqual((await self.refresh(tokens['refresh_token'])).status_code, 400)
 
     async def test_real_mcp_transport_uses_oauth_subject_and_redacts_bps_key(self):

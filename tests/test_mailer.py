@@ -1,7 +1,7 @@
 import ssl
 import unittest
 from unittest.mock import MagicMock,patch
-from src.mailer import send_verification,MailUnavailable
+from src.mailer import send_account_link,send_verification,MailUnavailable
 
 
 class MailerTests(unittest.TestCase):
@@ -28,6 +28,14 @@ class MailerTests(unittest.TestCase):
             send_verification('recipient@example.test','verify_synthetic-token')
         calls=[c[0] for c in smtp.return_value.__enter__.return_value.mock_calls]
         self.assertLess(calls.index('starttls'),calls.index('login'))
+
+    def test_account_links_use_distinct_fragments_and_expiry(self):
+        for purpose, fragment in [('reset','reset-password'), ('delete','delete-confirm')]:
+            with self.subTest(purpose=purpose), patch('src.mailer.smtplib.SMTP_SSL') as smtp:
+                send_account_link('recipient@example.test', purpose + '_synthetic', purpose)
+                message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+                self.assertIn('https://app.example.test/#' + fragment + '=' + purpose + '_synthetic', message.get_content())
+                self.assertIn('30 menit', message.get_content())
 
     def test_provider_errors_do_not_disclose_credentials(self):
         with patch('src.mailer.smtplib.SMTP_SSL',side_effect=Exception('secret-password-or-provider-details')):

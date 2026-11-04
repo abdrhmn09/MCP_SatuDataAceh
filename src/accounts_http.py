@@ -8,16 +8,17 @@ import re
 import time
 from urllib.parse import parse_qs
 
+from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 try:
     from .accounts import digest, get_vault, principal
-    from .mailer import send_verification, MailUnavailable
+    from .mailer import send_account_link, send_verification, MailUnavailable
 except ImportError:
     from accounts import digest, get_vault, principal
-    from mailer import send_verification, MailUnavailable
+    from mailer import send_account_link, send_verification, MailUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ async def read_body(request):
 
 
 async def dispatch_verification(vault, uid, email):
-    if not vault.throttle('verify-cooldown:'+uid,1,60) or not vault.throttle('verify-user:'+uid,3,3600) or not vault.throttle('verify-daily',max(1,int(os.getenv('SMTP_DAILY_LIMIT','100'))),86400):
+    if not vault.throttle('verify-cooldown:'+uid,1,60) or not vault.throttle('verify-user:'+uid,3,3600) or not mail_budget(vault):
         return False
     token=vault.verification_token(uid)
     try:
@@ -62,6 +63,41 @@ async def dispatch_verification(vault, uid, email):
     except MailUnavailable:
         vault.discard_verification(token)
         return False
+
+
+def mail_budget(vault):
+    return vault.throttle('verify-daily',max(1,int(os.getenv('SMTP_DAILY_LIMIT','100'))),86400)
+
+
+async def deliver_link(vault, email, token, purpose):
+    try:
+        await asyncio.to_thread(send_account_link,email,token,purpose)
+        return True
+    except MailUnavailable:
+        vault.discard_link(token)
+        logger.warning('Account email delivery failed for purpose=%s', purpose)
+        return False
+
+
+async def deliver_reset(vault, email):
+    # Run after the uniform response and bound work even when SMTP is slow.
+    if _mail_slots.locked():
+        return
+    try:
+        async with _mail_slots:
+            token = vault.reset_link(email)
+            if token:
+                if mail_budget(vault):
+                    await deliver_link(vault,email,token,'reset')
+                else:
+                    vault.discard_link(token)
+    except Exception:
+        logger.warning('Password reset delivery could not be processed')
+
+
+def clear_cookie(response):
+    response.delete_cookie(cookie_name(),path='/',secure=os.getenv('ACCOUNTS_DEV_HTTP')!='1',httponly=True,samesite='lax')
+    return response
 
 
 async def account_route(request):
@@ -77,13 +113,37 @@ async def account_route(request):
         if request.method=='GET' and action=='me':
             if not user: return result({'error':'login_required'},401)
             return result({**vault.profile(user['id']),'csrf':vault.csrf(raw)})
+        if request.method=='GET' and action=='sessions':
+            if not user: return result({'error':'login_required'},401)
+            return result({'sessions':vault.sessions(user['id'],raw)})
         if request.method!='POST': return result({'error':'not_found'},404)
+        if action=='recover':
+            return result({'error':'recovery_removed','message':'Gunakan Lupa sandi untuk menerima tautan melalui email.'},410)
         body=await read_body(request)
         peer=request.client.host if request.client else 'local'
         service_secret=os.getenv('ACCOUNTS_SERVICE_SECRET','')
         if len(service_secret)>=32 and hmac.compare_digest(request.headers.get('x-account-service-secret',''),service_secret):
             peer=request.headers.get('x-account-client-ip',peer)
-        if action in {'register','login','recover','resend','verify'}:
+        if action=='forgot-password':
+            email=vault.email(body.get('email'))
+            response=result({'ok':True,'message':'Jika email terdaftar dan terverifikasi, tautan pengaturan ulang akan dikirim. Periksa inbox dan spam.'},202)
+            if vault.throttle('reset-ip:'+peer,30) and vault.throttle('reset-email:'+email,3,3600):
+                response.background=BackgroundTask(deliver_reset,vault,email)
+            return response
+        if action in {'reset-password','delete-confirm'}:
+            if not vault.throttle('account-link-ip:'+peer,30):
+                return result({'error':'Terlalu banyak percobaan. Coba lagi dalam 15 menit.'},429)
+            if action=='reset-password':
+                async with _hash_slots:
+                    uid=await asyncio.to_thread(vault.reset_password,body.get('token'),body.get('password'))
+                response=result({'ok':True,'message':'Sandi diperbarui. Masuk kembali dan hubungkan ulang aplikasi AI.'})
+            else:
+                if body.get('confirm') is not True:
+                    return result({'error':'Konfirmasi penghapusan diperlukan.'},400)
+                uid=vault.delete_account(body.get('token'))
+                response=result({'ok':True,'message':'Akun dan data akun yang tersimpan telah dihapus.'})
+            return clear_cookie(response) if user and user['id']==uid else response
+        if action in {'register','login','resend','verify'}:
             if not vault.throttle('auth-ip:'+peer,30) or not vault.throttle('auth-user:'+str(body.get('email','') or peer).strip().lower(),10):
                 return result({'error':'Terlalu banyak percobaan. Coba lagi dalam 15 menit.'},429)
             if action=='verify':
@@ -97,13 +157,10 @@ async def account_route(request):
                 return result({'ok':True,'message':'Jika data akun cocok dan belum terverifikasi, email akan dikirim. Periksa inbox/spam; kirim ulang dibatasi.'})
             if action=='register':
                 async with _hash_slots:
-                    uid,recovery=await asyncio.to_thread(vault.register,body.get('email'),body.get('password'))
+                    uid=await asyncio.to_thread(vault.register,body.get('email'),body.get('password'))
                 sent=await dispatch_verification(vault,uid,vault.email(body.get('email')))
-                return result({'ok':True,'recovery_code':recovery,'verification_sent':sent,'message':'Simpan kode pemulihan ini. '+('Email verifikasi dikirim; periksa inbox/spam sebelum login.' if sent else 'Akun dibuat, tetapi email belum dapat dikirim. Tunggu satu menit lalu gunakan Kirim ulang verifikasi.')},201)
+                return result({'ok':True,'verification_sent':sent,'message':('Email verifikasi dikirim; periksa inbox/spam sebelum login.' if sent else 'Akun dibuat, tetapi email belum dapat dikirim. Tunggu satu menit lalu gunakan Kirim ulang verifikasi.')},201)
             async with _hash_slots:
-                if action=='recover':
-                    recovery=await asyncio.to_thread(vault.recover,body.get('email'),body.get('recovery_code'),body.get('password'))
-                    return result({'ok':True,'recovery_code':recovery,'message':'Password diperbarui. Semua sesi/token dicabut. Simpan kode pemulihan baru.'})
                 token=await asyncio.to_thread(vault.login,body.get('email'),body.get('password'))
             response=result({'ok':True})
             response.set_cookie(cookie_name(),token,max_age=43200,httponly=True,secure=os.getenv('ACCOUNTS_DEV_HTTP')!='1',samesite='lax',path='/')
@@ -113,9 +170,24 @@ async def account_route(request):
         uid=user['id']
         if action=='logout':
             vault.logout(raw)
-            response=result({'ok':True})
-            response.delete_cookie(cookie_name(),path='/',secure=os.getenv('ACCOUNTS_DEV_HTTP')!='1',httponly=True,samesite='lax')
-            return response
+            return clear_cookie(result({'ok':True}))
+        if action=='sessions':
+            current_ended=vault.revoke_session(uid,raw,body.get('session_id'))
+            response=result({'ok':True,'current_ended':current_ended})
+            return clear_cookie(response) if current_ended else response
+        if action=='delete-request':
+            if not vault.throttle('delete-attempt:'+uid,5):
+                return result({'error':'Terlalu banyak percobaan. Coba lagi dalam 15 menit.'},429)
+            async with _hash_slots:
+                email,token=await asyncio.to_thread(vault.delete_link,uid,raw,body.get('password'))
+            if not vault.throttle('delete-mail:'+uid,1,60) or not mail_budget(vault):
+                vault.discard_link(token)
+                return result({'error':'Pengiriman dibatasi. Coba lagi nanti.'},429)
+            async with _mail_slots:
+                sent=await deliver_link(vault,email,token,'delete')
+            if not sent:
+                return result({'error':'Email konfirmasi belum dapat dikirim. Coba lagi nanti.'},503)
+            return result({'ok':True,'message':'Periksa email untuk mengonfirmasi penghapusan akun.'},202)
         if action=='credentials':
             service=body.get('service','bps')
             if body.get('delete') is True: vault.delete_key(uid,service)
@@ -129,7 +201,7 @@ async def account_route(request):
             if body.get('revoke'):
                 vault.revoke_token(uid,body['revoke'])
                 return result({'ok':True})
-            token=vault.create_token(uid,body.get('label'),body.get('days',30))
+            token=vault.create_token(uid,body.get('label'),body.get('days',30),session=raw)
             return result({'ok':True,'token':token,'message':'Token hanya ditampilkan sekali. Simpan di pengaturan klien MCP.'},201)
         if action=='apps':
             from .oauth import OAuthStore
@@ -137,8 +209,10 @@ async def account_route(request):
             if body.get('revoke'): store.revoke_app(uid,body['revoke'])
             return result({'apps':store.apps(uid)})
         if action=='password':
-            async with _hash_slots: await asyncio.to_thread(vault.change_password,uid,body.get('old_password'),body.get('password'))
-            return result({'ok':True,'message':'Password diganti; semua sesi dan token dicabut. Login kembali.'})
+            if not vault.throttle('password-attempt:'+uid,10):
+                return result({'error':'Terlalu banyak percobaan. Coba lagi dalam 15 menit.'},429)
+            async with _hash_slots: await asyncio.to_thread(vault.change_password,uid,body.get('old_password'),body.get('password'),session=raw)
+            return clear_cookie(result({'ok':True,'message':'Sandi diganti. Masuk kembali dan hubungkan ulang aplikasi AI.'}))
         return result({'error':'not_found'},404)
     except (ValueError,TypeError,TimeoutError) as error:
         return result({'error':str(error)},400)
@@ -204,18 +278,28 @@ class AccountMiddleware:
                 with vault.db() as db: owner=db.execute('SELECT user_id FROM sse_sessions WHERE hash=? AND expires>?',(digest('http:'+request.headers['mcp-session-id']),int(time.time()))).fetchone()
                 if not owner or owner[0]!=user['id']: return await result({'error':'session_owner_mismatch'},403)(scope,receive,send)
             token=principal.set(user)
+            def remember_transport(session_id, prune=False):
+                with vault.db() as db:
+                    db.execute('BEGIN IMMEDIATE')
+                    # Do not recreate transport ownership after concurrent revocation.
+                    if not resolve(vault, request):
+                        return
+                    now = int(time.time())
+                    if prune:
+                        db.execute('DELETE FROM sse_sessions WHERE expires<=?',(now,))
+                    db.execute('INSERT OR REPLACE INTO sse_sessions VALUES(?,?,?)',
+                               (digest(session_id),user['id'],now+86400))
+
             async def checked_send(message):
                 nonlocal started
                 if message['type']=='http.response.start':
                     started=True
                     for name,value in message.get('headers',[]):
                         if name.lower()==b'mcp-session-id':
-                            with vault.db() as db: db.execute('INSERT OR REPLACE INTO sse_sessions VALUES(?,?,?)',(digest('http:'+value.decode()),user['id'],int(time.time())+86400))
+                            remember_transport('http:'+value.decode())
                 if path=='/sse' and message['type']=='http.response.body':
                     for sid in re.findall(rb'session_id=([a-zA-Z0-9_-]+)',message.get('body',b'')):
-                        with vault.db() as db:
-                            db.execute('DELETE FROM sse_sessions WHERE expires<=?',(int(time.time()),))
-                            db.execute('INSERT OR REPLACE INTO sse_sessions VALUES(?,?,?)',(digest(sid.decode()),user['id'],int(time.time())+86400))
+                        remember_transport(sid.decode(), prune=True)
                 await send(message)
             try: await self.app(scope,receive,checked_send)
             finally: principal.reset(token)

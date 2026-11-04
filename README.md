@@ -5,15 +5,19 @@ Server MCP independen untuk Portal Satu Data Aceh dan [Web API BPS](https://weba
 ## Alur pengguna
 
 1. Daftar akun dengan email dan password minimal 12 karakter.
-2. Simpan **kode pemulihan** yang hanya ditampilkan sekali. Verifikasi email melalui tautan yang dikirim sebelum login. Tidak ada email reset password otomatis.
+2. Verifikasi email melalui tautan yang dikirim sebelum masuk. Gunakan alamat yang dapat Anda akses untuk pemulihan sandi.
 3. Setelah email terverifikasi, login dan simpan API key BPS pada dashboard. Token SDGs terpisah dapat disimpan jika diperlukan.
 4. Tambahkan URL `/mcp` ke aplikasi AI dan pilih OAuth. Login di domain utama lalu periksa aplikasi, callback, dan izin sebelum menekan **Izinkan akses**.
 5. Alternatif untuk klien header manual: buat **token akses MCP** di dashboard dan pasang `Authorization: Bearer TOKEN_MCP_ANDA` (1–90 hari, default 30).
 6. Server mengenali akun, mendekripsi key milik akun itu untuk permintaan BPS, dan menyamarkan credential pada respons.
 
-Password menggunakan scrypt (N=131072, r=8, p=1, salt acak). API key dienkripsi AES-256-GCM dengan nonce acak dan associated data yang mengikat ciphertext ke pengguna/layanan. Kunci enkripsi utama berasal dari environment, terpisah dari database. Session/token MCP dan kode pemulihan hanya disimpan sebagai hash SHA-256 dari secret acak berentropi tinggi. Email dan metadata akun disimpan sebagai metadata biasa; seluruh berkas SQLite **bukan** database terenkripsi.
+Password menggunakan scrypt (N=131072, r=8, p=1, salt acak). API key dienkripsi AES-256-GCM dengan nonce acak dan associated data yang mengikat ciphertext ke pengguna/layanan. Kunci enkripsi utama berasal dari environment, terpisah dari database. Token sesi web, token MCP, dan token tautan akun hanya disimpan sebagai hash SHA-256 dari secret acak berentropi tinggi. Email dan metadata akun disimpan sebagai metadata biasa; seluruh berkas SQLite **bukan** database terenkripsi.
 
-Dashboard dapat mengganti/menghapus key, membuat/mencabut token, mengganti password, dan memulihkan akun menggunakan kode pemulihan. Ganti/reset password mencabut seluruh sesi, token manual, dan grant OAuth. Reset juga mengganti kode pemulihan. Jika password **dan** kode pemulihan hilang, tidak ada reset mandiri. Tidak ada akses baca ulang key BPS atau token yang pernah dibuat dari dashboard.
+Di **Keamanan**, pengguna dapat mengganti sandi, melihat dan mengakhiri sesi web, serta meminta penghapusan akun dengan sandi saat ini dan konfirmasi lewat email. **Lupa sandi** mengirim tautan sekali pakai ke email terverifikasi. Reset atau ganti sandi mencabut sesi web, token manual, grant OAuth, dan sesi transport MCP. Hubungkan ulang klien AI setelah masuk kembali. Kelola koneksi OAuth dan token manual dari **Aplikasi terhubung**.
+
+Penghapusan bersifat permanen pada database aktif dan mencakup salinan API key yang tersimpan di MCP Satu Data Aceh. Pencabutan key pada layanan penerbit tetap dilakukan melalui BPS. Salinan di cadangan mengikuti masa simpan cadangan operator.
+
+Endpoint akun baru berada di bawah `/api/account/`. `POST forgot-password` menerima `email`, `POST reset-password` menerima `token` dan `password`, `POST delete-request` menerima `password`, dan `POST delete-confirm` menerima `token` dan `confirm: true`. `GET sessions` menampilkan sesi web aktif. `POST sessions` menerima `session_id` berupa ID dari daftar sesi atau `others`. Semua permintaan `POST` memerlukan origin yang diizinkan. Tindakan yang mengandalkan sesi juga memerlukan header `X-CSRF-Token`.
 
 ## Perubahan dari versi sebelumnya
 
@@ -86,7 +90,7 @@ docker compose up -d --build
 
 `compose.yaml` menyimpan database di named volume `account-data`, dengan port hanya pada loopback VPS. Jangan gunakan `docker compose down -v` kecuali ingin menghapus data. Image berjalan non-root. Nginx meneruskan trafik HTTPS ke `127.0.0.1:8000`.
 
-Contoh konfigurasi lengkap ada di [deploy/nginx.conf](deploy/nginx.conf), termasuk route akun, explorer, SSE, Streamable HTTP, CORS dan header. Untuk landing page Nginx statis:
+Contoh konfigurasi lengkap ada di [deploy/nginx.conf](deploy/nginx.conf), termasuk route akun, explorer, SSE, Streamable HTTP, CORS dan header. Sebelum upgrade, cadangkan database dan master key secara terpisah. Jalankan backend baru terlebih dahulu agar migrasi SQLite selesai dan cek `/health` serta `/api/account/config`. Setelah itu, pasang landing page Nginx statis:
 
 ```bash
 sudo install -m 644 public/index.html public/app.js public/styles.css /var/www/mcpsatudataaceh.web.id/
@@ -98,7 +102,7 @@ Restart/recreate aplikasi setelah mengganti kode atau environment. Gunakan `MCP_
 
 Template `render.yaml` sekarang membutuhkan disk persisten dan plan yang mendukung disk (starter). Ini dapat menimbulkan biaya bila Anda memilih deploy melalui Render; tidak ada deployment otomatis dari pekerjaan lokal. Jangan menaruh database akun pada filesystem sementara layanan gratis.
 
-## Verifikasi email Gmail
+## Email verifikasi, reset sandi, dan penghapusan
 
 SMTP berjalan pada layanan Python kanonis, termasuk bila dashboard diakses melalui Worker. Isi secret berikut pada `.env` **di VPS** atau secret manager; file `.env` lokal tidak dikirim melalui Git:
 
@@ -113,11 +117,11 @@ SMTP_DAILY_LIMIT=100
 
 Gunakan password aplikasi Gmail, bukan password login biasa. Port 465 memakai implicit TLS; port 587 memakai STARTTLS wajib dengan pemeriksaan sertifikat. Tidak ada mode SMTP plaintext. `SMTP_FROM` sebaiknya sama dengan akun SMTP atau alias yang sudah diizinkan penyedia. Password SMTP hanya disimpan pada konfigurasi rahasia, tidak pada database akun, kode, respons, atau log. Alternatif yang disarankan adalah `SMTP_PASSWORD_FILE=/lokasi/rahasia/gmail-app-password` agar `.env` hanya memuat path. Berkas tersebut harus berizin 0600 (direktori 0700) dan dapat dibaca akun service. Jika kedua opsi diisi, berkas rahasia diprioritaskan. Pada Docker, mount berkas ke container dan setel path container; jangan menggunakan path host yang tidak ter-mount. Berkas di `/tmp` hanya cocok untuk konfigurasi lokal sementara, bukan penyimpanan production yang tahan reboot.
 
-Alur baru: daftar → simpan kode pemulihan → buka email verifikasi → tekan **Verifikasi email** → login. Token verifikasi acak hanya disimpan sebagai hash, berlaku satu jam, dan seluruh tautan untuk akun itu dibatalkan setelah satu tautan dipakai. Token berada pada fragment URL (`#verify=...`), dihapus dari address bar oleh halaman, lalu dikirim dengan POST setelah konfirmasi agar tidak masuk access log atau terpakai hanya karena pemindai email membuka tautan.
+Setelah daftar, buka email verifikasi, tekan **Verifikasi email**, lalu masuk. Token verifikasi acak hanya disimpan sebagai hash, berlaku satu jam, dan seluruh tautan untuk akun itu dibatalkan setelah satu tautan dipakai. Token berada pada fragment URL (`#verify=...`), dihapus dari address bar oleh halaman, lalu dikirim dengan POST setelah konfirmasi agar tidak masuk access log atau terpakai hanya karena pemindai email membuka tautan.
 
-Jika SMTP gagal, akun tetap pending dan kode pemulihan tetap diberikan. Tunggu satu menit lalu gunakan **Kirim ulang verifikasi** dengan email dan password yang benar. Resend dibatasi satu per menit, tiga per jam per akun, dan budget global `SMTP_DAILY_LIMIT` (default 100/hari; ini batas aplikasi, bukan kuota resmi Gmail). Periksa folder spam. Penerimaan SMTP belum menjamin pesan tiba di inbox.
+Jika SMTP gagal, akun menunggu verifikasi. Tunggu satu menit lalu gunakan **Kirim ulang verifikasi** dengan email dan password yang benar. Resend dibatasi satu per menit, tiga per jam per akun, dan budget global `SMTP_DAILY_LIMIT` (default 100/hari; ini batas aplikasi, bukan kuota resmi Gmail). Periksa folder spam. Penerimaan SMTP belum menjamin pesan tiba di inbox.
 
-Database lama dimigrasikan otomatis: email ditandai belum terverifikasi dan sesi/token lama dicabut. Pengguna lama harus meminta kirim ulang verifikasi, membuktikan kepemilikan email, lalu login dan membuat token MCP baru. Credential BPS terenkripsi tetap tersimpan. Master key divalidasi sebelum migrasi yang mengubah status akun. Backup DB dan master key sebelum upgrade.
+Database lama dimigrasikan otomatis: email ditandai belum terverifikasi dan sesi/token lama dicabut. Pengguna lama harus meminta kirim ulang verifikasi, membuktikan kepemilikan email, lalu login dan membuat token MCP baru. Credential BPS terenkripsi tetap tersimpan. Master key divalidasi sebelum migrasi yang mengubah status akun. Untuk akun dengan skema yang sudah mendukung verifikasi, pembaruan ini mempertahankan status verifikasi, kredensial, dan akses yang masih berlaku. Kode pemulihan lama dinonaktifkan. Endpoint lama mengembalikan HTTP 410 dan mengarahkan pengguna ke **Lupa sandi**.
 
 `ACCOUNTS_PUBLIC_ORIGIN` harus berisi origin HTTPS publik yang benar; tautan tidak dibentuk dari Host request. Jangan menggunakan IP lokal/URL preview untuk email produksi. Untuk Worker, tautan tetap menuju origin Python kanonis; status verifikasi dibagikan melalui database kanonis. Pastikan kedua origin memakai versi frontend terbaru. SMTP pada `.env` lokal belum mengonfigurasi SMTP di VPS.
 
@@ -131,7 +135,7 @@ Gateway Cloudflare dikelola di [repositori Worker mandiri](https://github.com/ab
 - Backup database menggunakan SQLite backup API atau saat aplikasi dihentikan, lalu backup master key secara **terpisah**. Perlakukan database (email/hash) dan master key sebagai informasi sensitif.
 - Kehilangan master key menyebabkan key BPS tersimpan tidak dapat didekripsi. Jangan membuat key baru setiap restart.
 - Rotasi master key: hentikan trafik/aplikasi dan gateway, backup DB dan key lama, setel `ACCOUNTS_DB_PATH`, `ACCOUNTS_ENCRYPTION_KEY` lama dan `ACCOUNTS_NEW_ENCRYPTION_KEY` baru pada environment, jalankan `python3 scripts/rotate_account_key.py`, lalu ubah secret server ke key baru sebelum restart. Seluruh sesi browser dibatalkan. Token MCP tetap berlaku sampai dicabut/kedaluwarsa.
-- Rate limit login/daftar/pemulihan tersimpan di SQLite (30 percobaan/IP dan 10/identitas per 15 menit). Hashing dibatasi dua pekerjaan paralel per proses. Rate limit tool masih berada di memori proses/isolate dan belum terdistribusi.
+- Rate limit login dan daftar tersimpan di SQLite (30 percobaan per IP dan 10 per identitas dalam 15 menit). Reset sandi dibatasi 30 permintaan per IP dalam 15 menit dan tiga per email dalam satu jam. Pengiriman verifikasi, reset, dan penghapusan berbagi kuota `SMTP_DAILY_LIMIT`. Jika backend berada di belakang reverse proxy, percayai header IP hanya dari proxy yang dikendalikan operator. Hashing dibatasi dua pekerjaan paralel per proses. Rate limit tool masih berada di memori proses/isolate dan belum terdistribusi.
 - Gunakan HTTPS produksi. `ACCOUNTS_DEV_HTTP=1` hanya untuk preview loopback; tidak boleh bind publik. Origin dashboard harus dicocokkan dengan port preview. Tidak ada analytics atau penyimpanan credential di localStorage.
 
 ## Tools dan akses BPS
@@ -167,7 +171,7 @@ STDIO lokal tetap menggunakan `BPS_API_KEY` dari environment pemilik proses, tan
 python3 -m unittest discover -s tests -v
 ```
 
-Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Tes OAuth mencakup discovery, DCR, consent/CSRF, PKCE, replay kode, resource/audience, refresh rotation/reuse, pencabutan, serta isolasi akun. Verifikasi email dan OAuth tersedia; reset password lewat email dan MFA belum tersedia.
+Tes memakai database/credential sintetis dan mock BPS, bukan key pengguna. UI di `public/` (HTML, JavaScript, CSS) dan salinan paket `src/static/` harus identik. Tes OAuth mencakup discovery, DCR, consent/CSRF, PKCE, replay kode, resource/audience, refresh rotation/reuse, pencabutan, serta isolasi akun. Tes akun mencakup migrasi, verifikasi email, reset sandi, penghapusan akun, pembatasan permintaan, dan pencabutan sesi. MFA berada di luar cakupan.
 
 
 ## Kualitas hasil dan alur tool yang disarankan

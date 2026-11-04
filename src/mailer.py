@@ -13,6 +13,21 @@ class MailUnavailable(Exception):
 
 
 def send_verification(recipient: str, token: str) -> None:
+    _send(recipient, token, 'verify', 'Verifikasi email akun MCP Satu Data Aceh',
+          'Konfirmasikan email untuk mengaktifkan akun Anda.', 'Verifikasi email', '1 jam')
+
+
+def send_account_link(recipient: str, token: str, purpose: str) -> None:
+    if purpose == 'reset':
+        _send(recipient, token, 'reset-password', 'Atur ulang sandi MCP Satu Data Aceh',
+              'Ada permintaan untuk mengatur ulang sandi akun Anda.', 'Simpan sandi baru', '30 menit')
+    else:
+        _send(recipient, token, 'delete-confirm', 'Konfirmasi penghapusan akun MCP Satu Data Aceh',
+              'Ada permintaan untuk menghapus akun Anda beserta akses dan API key yang tersimpan.',
+              'Hapus akun secara permanen', '30 menit')
+
+
+def _send(recipient, token, route, subject, intro, action, duration):
     username = os.getenv('SMTP_USERNAME', '')
     try:
         secret_file = os.getenv('SMTP_PASSWORD_FILE', '')
@@ -33,16 +48,16 @@ def send_verification(recipient: str, token: str) -> None:
     if not username or not password or not sender or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment or not parsed.netloc or (parsed.scheme != 'https' and not (parsed.scheme == 'http' and dev_loopback)):
         raise MailUnavailable('Konfigurasi email belum siap.')
     message = EmailMessage()
-    message['Subject'] = 'Verifikasi email akun MCP Satu Data Aceh'
+    message['Subject'] = subject
     message['From'] = formataddr(('MCP Satu Data Aceh', sender))
     message['To'] = recipient
     # Fragments are not sent in HTTP requests or included in server access logs.
-    link = origin + '/#verify=' + token
+    link = origin + '/#' + route + '=' + token
     message.set_content(
-        'Halo,\n\nKonfirmasikan email Anda untuk mengaktifkan akun MCP Satu Data Aceh.\n'
-        'Buka tautan berikut, lalu tekan tombol Verifikasi email:\n\n' + link + '\n\n'
-        'Tautan berlaku 1 jam dan hanya dapat digunakan sekali.\n'
-        'Jika Anda tidak mendaftar, abaikan pesan ini. Jangan membagikan tautan kepada orang lain.\n\n'
+        f'Halo,\n\n{intro}\n'
+        f'Buka tautan berikut, lalu tekan tombol {action}:\n\n{link}\n\n'
+        f'Tautan berlaku {duration} dan hanya dapat digunakan sekali.\n'
+        'Jika Anda tidak meminta tindakan ini, abaikan pesan ini. Jangan membagikan tautan kepada orang lain.\n\n'
         'MCP Satu Data Aceh — proyek independen, bukan layanan resmi BPS.\n'
     )
     context = ssl.create_default_context()
@@ -64,4 +79,4 @@ def send_verification(recipient: str, token: str) -> None:
             raise MailUnavailable('Port SMTP harus 465 atau 587 dengan TLS.')
     except Exception:
         # SMTP provider errors can echo addresses and credentials. Never expose them.
-        raise MailUnavailable('Email verifikasi belum dapat dikirim. Silakan coba kirim ulang.') from None
+        raise MailUnavailable('Email belum dapat dikirim. Silakan coba lagi.') from None

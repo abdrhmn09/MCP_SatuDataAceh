@@ -38,7 +38,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
     async def register_login(self,email='alice@example.test'):
         response=await self.client.post('/api/account/register',json={'email':email,'password':'correct horse battery staple'})
         self.assertEqual(response.status_code,201,response.text)
-        recovery=response.json()['recovery_code']
+        self.assertNotIn('recovery_code',response.json())
         self.vault.verify_email(self.mail.call_args.args[1])
         response=await self.client.post('/api/account/login',json={'email':email,'password':'correct horse battery staple'})
         self.assertEqual(response.status_code,200,response.text)
@@ -46,10 +46,10 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         for marker in ['HttpOnly','Secure','SameSite=lax','Path=/']:self.assertIn(marker,cookie)
         profile=(await self.client.get('/api/account/me')).json()
         self.client.headers['X-CSRF-Token']=profile['csrf']
-        return recovery,profile
+        return profile
 
     async def test_complete_lifecycle_and_encrypted_storage(self):
-        recovery,profile=await self.register_login()
+        profile=await self.register_login()
         key='personal-bps-key-1234'
         response=await self.client.post('/api/account/credentials',json={'service':'bps','key':key})
         self.assertEqual(response.status_code,200)
@@ -58,9 +58,9 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(token.startswith('mcp_'))
         profile=(await self.client.get('/api/account/me')).json()
         encoded=json.dumps(profile)
-        for secret in [key,token,recovery,'correct horse battery staple']:self.assertNotIn(secret,encoded)
+        for secret in [key,token,'correct horse battery staple']:self.assertNotIn(secret,encoded)
         raw=Path(self.vault.path).read_bytes()
-        for secret in [key,token,recovery,'correct horse battery staple']:self.assertNotIn(secret.encode(),raw)
+        for secret in [key,token,'correct horse battery staple']:self.assertNotIn(secret.encode(),raw)
         self.assertEqual(self.vault.get_key(profile['user']['id']),key)
         self.assertEqual((await self.client.post('/mcp',json={},headers={'Authorization':'Bearer '+token})).status_code,200)
         # Session cookies cannot authenticate an MCP client.
@@ -80,21 +80,119 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(r.status_code,403)
         self.assertEqual((await self.client.post('/api/account/login',json={},headers={'Origin':'https://evil.test'})).status_code,403)
 
-    async def test_recovery_rotates_code_and_revokes_everything(self):
-        recovery,profile=await self.register_login()
-        token=self.vault.create_token(profile['user']['id'],'old')
-        r=await self.client.post('/api/account/recover',json={'email':'alice@example.test','recovery_code':recovery,'password':'a completely new password'})
-        self.assertEqual(r.status_code,200,r.text)
-        self.assertNotEqual(r.json()['recovery_code'],recovery)
-        self.assertIsNone(self.vault.identity(token,'mcp'))
+    async def test_email_reset_revokes_access_and_rejects_replay(self):
+        profile = await self.register_login()
+        uid = profile['user']['id']
+        old_access = self.vault.create_token(uid, 'old')
+        deletion = self.vault.delete_link(uid, self.client.cookies['__Host-mcp_session'], 'correct horse battery staple')[1]
+        self.vault.save_key(uid, 'bps', 'retained-bps-key')
+        with self.vault.db() as db:
+            db.execute("INSERT INTO sse_sessions VALUES ('transport',?,9999999999)", (uid,))
+        with patch('src.accounts_http.send_account_link') as send:
+            known = await self.client.post('/api/account/forgot-password', json={'email':'alice@example.test'})
+            unknown = await self.client.post('/api/account/forgot-password', json={'email':'unknown@example.test'})
+        self.assertEqual(known.status_code, 202)
+        self.assertEqual(known.json(), unknown.json())
+        send.assert_called_once()
+        recipient, token, purpose = send.call_args.args
+        self.assertEqual((recipient, purpose), ('alice@example.test', 'reset'))
+        self.assertNotIn(token.encode(), Path(self.vault.path).read_bytes())
+        self.assertEqual((await self.client.get('/api/account/reset-password')).status_code,404)
+        body = {'token':token, 'password':'a completely new password'}
+        results = await asyncio.gather(*(self.client.post('/api/account/reset-password', json=body) for _ in range(2)))
+        self.assertEqual(sorted(result.status_code for result in results), [200,400])
+        self.assertIsNone(self.vault.identity(old_access,'mcp'))
+        self.assertEqual(self.vault.get_key(uid), 'retained-bps-key')
         self.assertEqual((await self.client.get('/api/account/me')).status_code,401)
-        with self.assertRaises(ValueError):self.vault.recover('alice@example.test',recovery,'another different password')
+        with self.assertRaises(ValueError):
+            self.vault.delete_account(deletion)
+        with self.vault.db() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM sse_sessions').fetchone()[0], 0)
+        self.assertEqual((await self.client.post('/api/account/login', json={'email':recipient,'password':body['password']})).status_code,200)
+
+    async def test_failed_email_and_throttling_preserve_uniform_response(self):
+        from src.mailer import MailUnavailable
+        await self.register_login()
+        self.vault.register('pending@example.test','pending synthetic password')
+        with patch('src.accounts_http.send_account_link', side_effect=MailUnavailable()) as send:
+            responses = [await self.client.post('/api/account/forgot-password', json={'email':email})
+                         for email in ['alice@example.test'] * 4 + ['pending@example.test','unknown@example.test']]
+        self.assertEqual(send.call_count,3)
+        self.assertTrue(all(r.status_code==202 and r.json()==responses[0].json() for r in responses))
+        with self.vault.db() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM account_links').fetchone()[0], 0)
+
+    async def test_account_deletion_requires_password_and_explicit_confirmation(self):
+        uid = (await self.register_login())['user']['id']
+        other = self.vault.register('other@example.test', 'other synthetic password')
+        self.vault.save_key(uid,'bps','alice-key-synthetic')
+        self.vault.save_key(other,'bps','other-key-synthetic')
+        access = self.vault.create_token(uid,'laptop')
+        with patch('src.accounts_http.send_account_link') as send:
+            for headers, password, status in [
+                ({'X-CSRF-Token':'wrong'}, 'correct horse battery staple', 403),
+                ({}, 'wrong synthetic password', 400),
+                ({}, 'correct horse battery staple', 202),
+            ]:
+                result = await self.client.post('/api/account/delete-request', headers=headers, json={'password':password})
+                self.assertEqual(result.status_code,status)
+        send.assert_called_once()
+        token = send.call_args.args[1]
+        self.assertEqual((await self.client.get('/api/account/delete-confirm')).status_code,404)
+        self.assertEqual((await self.client.post('/api/account/delete-confirm',json={'token':token})).status_code,400)
+        self.assertEqual(self.vault.get_key(uid),'alice-key-synthetic')
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app),base_url='https://app.test',
+                                     headers={'Origin':'https://app.test'}) as visitor:
+            results = await asyncio.gather(*(visitor.post('/api/account/delete-confirm',json={'token':token,'confirm':True}) for _ in range(2)))
+        self.assertEqual(sorted(result.status_code for result in results), [200,400])
+        self.assertEqual(self.vault.get_key(uid),'')
+        self.assertEqual(self.vault.get_key(other),'other-key-synthetic')
+        self.assertIsNone(self.vault.identity(access,'mcp'))
+        self.assertEqual((await self.client.get('/api/account/me')).status_code,401)
+        with self.vault.db() as db:
+            self.assertIsNone(db.execute('SELECT 1 FROM users WHERE id=?',(uid,)).fetchone())
+
+    async def test_sessions_are_opaque_and_cannot_be_revoked_by_another_account(self):
+        await self.register_login()
+        uid = self.vault.register('other@example.test','other synthetic password')
+        self.vault.verify_email(self.vault.verification_token(uid))
+        other = self.vault.login('other@example.test','other synthetic password')
+        second = self.vault.login('alice@example.test','correct horse battery staple')
+        with self.vault.db() as db:
+            db.execute("INSERT INTO oauth_pending VALUES ('pending','{}',?,?,9999999999)", (uid,accounts.digest(other)))
+        sessions = (await self.client.get('/api/account/sessions')).json()['sessions']
+        self.assertEqual(len(sessions),2)
+        self.assertEqual(sum(session['current'] for session in sessions),1)
+        self.assertNotIn(accounts.digest(second),json.dumps(sessions))
+        other_id = self.vault.sessions(uid,other)[0]['id']
+        await self.client.post('/api/account/sessions',json={'session_id':other_id})
+        self.assertIsNotNone(self.vault.identity(other))
+        await self.client.post('/api/account/sessions',json={'session_id':'others'})
+        self.assertIsNone(self.vault.identity(second))
+        self.assertEqual(len((await self.client.get('/api/account/sessions')).json()['sessions']),1)
+
+    async def test_migration_disables_old_recovery_and_expired_link(self):
+        profile = await self.register_login()
+        uid = profile['user']['id']
+        self.vault.save_key(uid,'bps','retained-synthetic-key')
+        with self.vault.db() as db:
+            db.execute("UPDATE users SET recovery='legacy-recovery-hash' WHERE id=?",(uid,))
+            db.execute('DROP TABLE account_links')
+        reopened = accounts.Vault(self.vault.path,self.key)
+        with reopened.db() as db:
+            self.assertEqual(tuple(db.execute('SELECT recovery,email_verified FROM users WHERE id=?',(uid,)).fetchone()),('',1))
+        self.assertEqual(reopened.get_key(uid),'retained-synthetic-key')
+        self.assertEqual((await self.client.post('/api/account/recover',json={})).status_code,410)
+        token = reopened.reset_link('alice@example.test')
+        with reopened.db() as db:
+            db.execute('UPDATE account_links SET expires=0')
+        self.assertEqual((await self.client.post('/api/account/reset-password',json={'token':token,'password':'some new synthetic password'})).status_code,400)
 
     async def test_cross_user_keys_and_tokens_are_isolated(self):
-        _,a=await self.register_login()
+        a=await self.register_login()
         uid_a=a['user']['id'];self.vault.save_key(uid_a,'bps','alice-key-1234')
         token_a=self.vault.create_token(uid_a,'Alice')
-        uid_b,_=self.vault.register('bob@example.test','password for bob long enough')
+        uid_b=self.vault.register('bob@example.test','password for bob long enough')
         self.vault.verify_email(self.vault.verification_token(uid_b))
         self.vault.save_key(uid_b,'bps','bob-key-567890')
         token_b=self.vault.create_token(uid_b,'Bob')
@@ -111,7 +209,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(Exception):self.vault.get_key(uid_b)
 
     async def test_expired_token_and_wrong_master_key_fail_closed(self):
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         token=self.vault.create_token(profile['user']['id'],'expire')
         with self.vault.db() as db:db.execute('UPDATE tokens SET expires=0')
         self.assertIsNone(self.vault.identity(token,'mcp'))
@@ -119,7 +217,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):accounts.Vault(self.vault.path,'')
 
     async def test_password_change_revokes_sessions_and_mcp_tokens(self):
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         token=self.vault.create_token(profile['user']['id'],'expire')
         r=await self.client.post('/api/account/password',json={'old_password':'correct horse battery staple','password':'new secure password abcdef'})
         self.assertEqual(r.status_code,200)
@@ -134,7 +232,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status_code,429)
 
     async def test_sse_messages_require_session_ownership(self):
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         token=self.vault.create_token(profile['user']['id'],'sse')
         r=await self.client.post('/messages/?session_id=foreign',headers={'Authorization':'Bearer '+token})
         self.assertEqual(r.status_code,403)
@@ -143,7 +241,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         if not server._security_at_runtime:
             self.skipTest('MCP 2 integration path; other SDKs covered by boundary tests')
         from mcp.server.transport_security import TransportSecuritySettings
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         uid=profile['user']['id']
         self.vault.save_key(uid,'bps','real-transport-user-key')
         token=self.vault.create_token(uid,'transport')
@@ -162,7 +260,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_master_key_rotation_preserves_credentials_and_revokes_sessions(self):
         from scripts.rotate_account_key import main
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         uid=profile['user']['id'];self.vault.save_key(uid,'bps','rotated-user-key-1234')
         token=self.vault.create_token(uid,'keep-token')
         new=base64.b64encode(secrets.token_bytes(32)).decode()
@@ -189,7 +287,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.post('/api/account/login',json={'email':'verify@example.test','password':'verification password abcdef'})).status_code,200)
 
     async def test_expired_verification_and_sibling_tokens(self):
-        uid,_=self.vault.register('expiry@example.test','verification password abcdef')
+        uid=self.vault.register('expiry@example.test','verification password abcdef')
         expired=self.vault.verification_token(uid)
         with self.vault.db() as db:db.execute('UPDATE email_verifications SET expires=0')
         with self.assertRaises(ValueError):self.vault.verify_email(expired)
@@ -203,7 +301,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         r=await self.client.post('/api/account/register',json={'email':'retry@example.test','password':'verification password abcdef'})
         self.assertEqual(r.status_code,201)
         self.assertFalse(r.json()['verification_sent'])
-        self.assertIn('recovery_code',r.json())
+        self.assertNotIn('recovery_code',r.json())
         with self.vault.db() as db:self.assertEqual(db.execute('SELECT count(*) FROM email_verifications').fetchone()[0],0)
         self.mail.side_effect=None
         import time
@@ -220,7 +318,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.mail.call_count,count)
 
     async def test_old_accounts_require_verification_after_schema_migration(self):
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         old_token=self.vault.create_token(profile['user']['id'],'old-version')
         with self.vault.db() as db:db.execute('ALTER TABLE users DROP COLUMN email_verified')
         with self.assertRaises(ValueError):accounts.Vault(self.vault.path,base64.b64encode(secrets.token_bytes(32)).decode())
@@ -230,7 +328,7 @@ class AccountTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):upgraded.login('alice@example.test','correct horse battery staple')
 
     async def test_key_paste_normalization_and_rejected_input_does_not_overwrite(self):
-        _,profile=await self.register_login()
+        profile=await self.register_login()
         valid='synthetic+base64/key=1234'
         r=await self.client.post('/api/account/credentials',json={'service':'bps','key':' \n'+valid+'\t '})
         self.assertEqual(r.status_code,200,r.text)

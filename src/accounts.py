@@ -77,6 +77,14 @@ class Vault:
                 db.execute('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0')
                 db.execute('DELETE FROM sessions')
                 db.execute('DELETE FROM tokens')
+            db.execute("UPDATE users SET recovery='' WHERE recovery<>''")
+            db.execute('''CREATE TABLE IF NOT EXISTS account_links(
+                hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                purpose TEXT NOT NULL CHECK(purpose IN ('reset','delete')),
+                expires INTEGER NOT NULL
+            )''')
+            db.execute('CREATE INDEX IF NOT EXISTS account_links_user ON account_links(user_id)')
         self.dummy_password = password_hash('dummy-password-never-used')
         from .oauth import init_schema
         init_schema(self)
@@ -109,13 +117,13 @@ class Vault:
 
     def register(self, email, password):
         email = self.email(email)
-        uid, recovery = secrets.token_hex(16), secrets.token_urlsafe(32)
+        uid = secrets.token_hex(16)
         encoded = password_hash(password)
         try:
             with self.db() as db:
-                db.execute('INSERT INTO users(id,email,password,recovery,created,email_verified) VALUES(?,?,?,?,?,0)',(uid,email,encoded,digest(recovery),int(time.time())))
+                db.execute('INSERT INTO users(id,email,password,recovery,created,email_verified) VALUES(?,?,?,?,?,0)',(uid,email,encoded,'',int(time.time())))
         except sqlite3.IntegrityError: raise ValueError('Pendaftaran tidak dapat diproses. Gunakan login atau pemulihan akun.')
-        return uid, recovery
+        return uid
 
     def login(self, email, password):
         email = self.email(email)
@@ -203,14 +211,16 @@ class Vault:
         from .oauth import OAuthStore
         return {'user':dict(user),'credentials':keys,'tokens':tokens,'apps':OAuthStore(self).apps(uid)}
 
-    def create_token(self,uid,label,days=30):
+    def create_token(self,uid,label,days=30,*,session=None):
         if not isinstance(label,str) or not 1<=len(label.strip())<=80 or isinstance(days,bool) or not isinstance(days,int) or not 1<=days<=90: raise ValueError('Label wajib diisi; masa berlaku token 1–90 hari.')
-        with self.db() as db:
-            user=db.execute('SELECT email_verified FROM users WHERE id=?',(uid,)).fetchone()
-        if not user or not user[0]: raise ValueError('Verifikasi email sebelum membuat token MCP.')
         token='mcp_'+secrets.token_urlsafe(32)
         now=int(time.time())
         with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            user=db.execute('SELECT email_verified FROM users WHERE id=?',(uid,)).fetchone()
+            if not user or not user[0]: raise ValueError('Verifikasi email sebelum membuat token MCP.')
+            if session is not None and not self._active_session(db, uid, session):
+                raise ValueError('Sesi telah berakhir. Silakan masuk kembali.')
             if db.execute('SELECT count(*) FROM tokens WHERE user_id=? AND expires>?',(uid,now)).fetchone()[0]>=20: raise ValueError('Maksimal 20 token aktif; cabut token lama.')
             db.execute('INSERT INTO tokens VALUES(?,?,?,?,?,?)',(secrets.token_hex(16),uid,digest(token),label.strip(),now,now+days*86400))
         return token
@@ -221,34 +231,114 @@ class Vault:
     def logout(self,raw):
         with self.db() as db: db.execute('DELETE FROM sessions WHERE hash=?',(digest(raw),))
 
-    def change_password(self,uid,old,new):
+    @staticmethod
+    def _active_session(db, uid, raw):
+        return db.execute('SELECT 1 FROM sessions WHERE user_id=? AND hash=? AND expires>?',
+                          (uid,digest(raw),int(time.time()))).fetchone()
+
+    def _session_id(self, stored_hash):
+        return hmac.digest(self.key, ('session-id:' + stored_hash).encode(), 'sha256').hex()
+
+    def sessions(self, uid, raw):
+        current = digest(raw)
+        with self.db() as db:
+            rows = db.execute('SELECT hash,expires FROM sessions WHERE user_id=? AND expires>? ORDER BY expires DESC', (uid,int(time.time())))
+            return [{'id':self._session_id(row['hash']), 'expires':row['expires'], 'current':row['hash']==current} for row in rows]
+
+    def revoke_session(self, uid, raw, session_id):
+        if session_id != 'others' and (not isinstance(session_id, str) or not re.fullmatch(r'[0-9a-f]{64}', session_id)):
+            raise ValueError('Pilih sesi yang akan diakhiri.')
+        current = digest(raw)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if not self._active_session(db, uid, raw):
+                raise ValueError('Sesi telah berakhir. Silakan masuk kembali.')
+            if session_id == 'others':
+                db.execute('DELETE FROM sessions WHERE user_id=? AND hash<>?', (uid,current))
+                return False
+            for row in db.execute('SELECT hash FROM sessions WHERE user_id=? AND expires>?', (uid,int(time.time()))):
+                stored = row['hash']
+                if hmac.compare_digest(self._session_id(stored), session_id):
+                    db.execute('DELETE FROM sessions WHERE user_id=? AND hash=?', (uid,stored))
+                    return stored == current
+        return False
+
+    @staticmethod
+    def _revoke_access(db, uid):
+        from .oauth import revoke_user
+        for table in ('sessions', 'tokens', 'sse_sessions', 'account_links'):
+            db.execute(f'DELETE FROM {table} WHERE user_id=?', (uid,))
+        revoke_user(db, uid)
+
+    def change_password(self,uid,old,new,*,session=None):
         with self.db() as db: row=db.execute('SELECT password FROM users WHERE id=?',(uid,)).fetchone()
         if not row or not verify_password(old,row[0]): raise ValueError('Password saat ini tidak cocok.')
         encoded=password_hash(new)
         with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if session is not None and not self._active_session(db, uid, session):
+                raise ValueError('Sesi telah berakhir. Silakan masuk kembali.')
             changed=db.execute('UPDATE users SET password=? WHERE id=? AND password=?',(encoded,uid,row[0]))
             if changed.rowcount!=1: raise ValueError('Password berubah; silakan login kembali.')
-            db.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
-            db.execute('DELETE FROM tokens WHERE user_id=?',(uid,))
-            from .oauth import revoke_user
-            revoke_user(db,uid)
+            self._revoke_access(db, uid)
 
-    def recover(self,email,code,password):
-        email=self.email(email)
-        if not isinstance(code,str) or len(code)>256: raise ValueError('Kode pemulihan tidak valid.')
-        encoded=password_hash(password)
-        recovery=secrets.token_urlsafe(32)
+    @staticmethod
+    def _issue_link(db, uid, purpose):
+        token = purpose + '_' + secrets.token_urlsafe(32)
+        now = int(time.time())
+        db.execute('DELETE FROM account_links WHERE expires<=?', (now,))
+        db.execute('INSERT INTO account_links VALUES(?,?,?,?)', (digest(token),uid,purpose,now+1800))
+        return token
+
+    def reset_link(self, email):
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            row=db.execute('SELECT id FROM users WHERE email=? AND recovery=?',(email,digest(code))).fetchone()
-            if not row: raise ValueError('Email atau kode pemulihan tidak cocok.')
-            uid=row[0]
-            db.execute('UPDATE users SET password=?,recovery=? WHERE id=?',(encoded,digest(recovery),uid))
-            db.execute('DELETE FROM sessions WHERE user_id=?',(uid,))
-            db.execute('DELETE FROM tokens WHERE user_id=?',(uid,))
-            from .oauth import revoke_user
-            revoke_user(db,uid)
-        return recovery
+            row = db.execute('SELECT id FROM users WHERE email=? AND email_verified=1', (email,)).fetchone()
+            return self._issue_link(db, row['id'], 'reset') if row else None
+
+    def delete_link(self, uid, raw, password):
+        with self.db() as db:
+            row = db.execute('SELECT email,password FROM users WHERE id=?', (uid,)).fetchone()
+        if not row or not verify_password(password, row['password']):
+            raise ValueError('Sandi saat ini tidak cocok.')
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            unchanged = db.execute('SELECT 1 FROM users WHERE id=? AND password=?', (uid,row['password'])).fetchone()
+            if not unchanged or not self._active_session(db, uid, raw):
+                raise ValueError('Sesi atau sandi telah berubah. Silakan masuk kembali.')
+            return row['email'], self._issue_link(db, uid, 'delete')
+
+    def discard_link(self, token):
+        with self.db() as db:
+            db.execute('DELETE FROM account_links WHERE hash=?', (digest(token),))
+
+    @staticmethod
+    def _link_user(db, token, purpose):
+        if isinstance(token, str) and re.fullmatch(purpose + r'_[A-Za-z0-9_-]{43}', token):
+            row = db.execute('SELECT user_id FROM account_links WHERE hash=? AND purpose=? AND expires>?',
+                (digest(token),purpose,int(time.time()))).fetchone()
+            if row:
+                return row['user_id']
+        raise ValueError('Tautan tidak valid atau sudah kedaluwarsa. Minta tautan baru.')
+
+    def reset_password(self, token, password):
+        with self.db() as db:
+            self._link_user(db, token, 'reset')
+        encoded = password_hash(password)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            uid = self._link_user(db, token, 'reset')
+            db.execute('UPDATE users SET password=? WHERE id=?', (encoded,uid))
+            self._revoke_access(db, uid)
+        return uid
+
+    def delete_account(self, token):
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            uid = self._link_user(db, token, 'delete')
+            self._revoke_access(db, uid)
+            db.execute('DELETE FROM users WHERE id=?', (uid,))
+        return uid
 
 
 @lru_cache(maxsize=1)
