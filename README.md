@@ -41,4 +41,3 @@ python -m unittest discover -s tests -q
 - [`src/`](src/) berisi server Python, alat MCP, adapter data, pengelolaan akun, dan OAuth.
 - [`public/`](public/) berisi sumber aset situs. Salin perubahan aset ke [`src/static/`](src/static/) agar paket Python dan Nginx menyajikan versi yang sama. CI memeriksa kesesuaian keduanya.
 - [`tests/`](tests/) berisi pengujian dengan data dan akun sintetis. [`deploy/`](deploy/) berisi konfigurasi Nginx dan skrip rilis VPS.
-
