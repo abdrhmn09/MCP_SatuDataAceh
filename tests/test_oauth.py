@@ -3,6 +3,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import secrets
 import tempfile
 import time
@@ -244,6 +245,46 @@ class OAuthTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(client.client_id, 'https://chatgpt.com/oauth/test-client.json')
             self.assertEqual(client.token_endpoint_auth_method, 'none')
             self.assertIsNone(client.client_secret)
+
+    async def test_opencode_cimd_native_callback_with_port(self):
+        client_id = 'https://opencode.ai/oauth/opencode/client.json'
+        redirect = 'http://127.0.0.1:19876/mcp/oauth/callback'
+        real_client = httpx.AsyncClient
+
+        def metadata(request):
+            self.assertEqual(str(request.url), client_id)
+            return httpx.Response(200, json={
+                'client_id': client_id, 'client_name': 'opencode', 'application_type': 'native',
+                'redirect_uris': ['http://127.0.0.1/callback', 'http://localhost/callback',
+                                  'http://127.0.0.1/mcp/oauth/callback'],
+                'token_endpoint_auth_method': 'none',
+            })
+
+        with patch.dict(os.environ), patch('src.oauth_http.httpx.AsyncClient',
+                side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(metadata), **kwargs)) as network:
+            os.environ.pop('OAUTH_CIMD_HOSTS', None)
+            for invalid in [redirect + '/other', redirect + '?extra=1',
+                            redirect.replace('127.0.0.1', 'localhost'),
+                            redirect.replace('127.0.0.1', '127.0.0.1.example.test')]:
+                result = await self.http.get('/authorize', params=self.authorization(client_id=client_id, redirect_uri=invalid))
+                self.assertEqual(result.status_code, 400, result.text)
+                self.assertNotIn('location', result.headers)
+
+            code = await self.code(client_id=client_id, redirect_uri=redirect)
+            wrong_port = await self.exchange(code, client_id=client_id, redirect_uri=redirect.replace('19876', '19877'))
+            self.assertEqual(wrong_port.status_code, 400, wrong_port.text)
+            result = await self.exchange(code, client_id=client_id, redirect_uri=redirect)
+            self.assertEqual(result.status_code, 200, result.text)
+            tokens = result.json()
+            mcp = await self.http.post('/mcp', headers={'Authorization': 'Bearer ' + tokens['access_token']})
+            self.assertEqual(mcp.json()['user'], self.uid)
+            self.assertEqual((await self.refresh(tokens['refresh_token'], client_id=client_id)).status_code, 200)
+            network.assert_called_once()
+
+            with patch.dict(os.environ, {'OAUTH_CIMD_HOSTS': 'chatgpt.com,claude.ai'}):
+                blocked = await self.http.get('/authorize', params=self.authorization(client_id=client_id, redirect_uri=redirect))
+                self.assertEqual(blocked.status_code, 400, blocked.text)
+                self.assertIn('not found', blocked.json()['error_description'])
 
     async def test_expired_codes_tokens_pending_and_recovery(self):
         code = await self.code()

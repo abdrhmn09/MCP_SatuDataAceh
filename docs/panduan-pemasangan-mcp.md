@@ -9,6 +9,8 @@ Mulai dengan **server jarak jauh melalui OAuth**. Server sudah berjalan di VPS, 
 | Claude Desktop | Server lokal dengan STDIO | `claude_desktop_config.json` |
 | Google Antigravity | Server jarak jauh atau STDIO | `mcp_config.json` dengan `mcpServers` |
 | VS Code | Server jarak jauh atau STDIO | `.vscode/mcp.json` dengan `servers` |
+| OpenCode | Server jarak jauh dengan OAuth | `opencode.json` dengan `mcp` |
+| Bot RAG atau agent kustom | Server jarak jauh dengan token MCP | [Panduan integrasi backend dan contoh Python](integrasi-agent-kustom.md) |
 
 ## Server jarak jauh dengan OAuth
 
@@ -64,6 +66,28 @@ Tambahkan entri ke `.vscode/mcp.json`, lalu jalankan server melalui **MCP: List 
 ```
 
 Rujukan [VS Code – MCP configuration](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
+
+### OpenCode
+
+Tambahkan entri berikut ke bagian `mcp` di `opencode.json`.
+
+```json
+{
+  "mcp": {
+    "satu-data-aceh": {
+      "type": "remote",
+      "url": "https://www.mcpsatudataaceh.web.id/mcp",
+      "oauth": { "scope": "data:read" }
+    }
+  }
+}
+```
+
+Jalankan `opencode mcp auth satu-data-aceh` dan setujui akses di browser. Periksa status dengan `opencode mcp list`. Jika konfigurasi VPS menetapkan `OAUTH_CIMD_HOSTS` secara eksplisit, masukkan `opencode.ai` ke daftar tersebut dan mulai ulang layanan MCP.
+
+Jika server belum mendukung OAuth OpenCode, buat token MCP manual dari **Aplikasi terhubung**. Di entri OpenCode, gunakan `"oauth": false` dan `"headers": { "Authorization": "Bearer {env:SDA_MCP_TOKEN}" }`. Sediakan token MCP pada variabel lingkungan `SDA_MCP_TOKEN` saat membuka OpenCode.
+
+Rujukan [dokumentasi MCP OpenCode](https://opencode.ai/docs/mcp-servers/#oauth).
 
 ## Pengaturan lanjutan untuk server lokal dengan STDIO
 

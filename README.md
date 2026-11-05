@@ -31,6 +31,8 @@ OAuth Authorization Code + PKCE S256 tersedia melalui akun yang sama. API key BP
 
 Lihat [panduan pemasangan MCP](docs/panduan-pemasangan-mcp.md) untuk langkah per aplikasi, konfigurasi lokal, dan uji koneksi.
 
+Untuk bot RAG dan AI agent buatan sendiri, lihat [panduan integrasi agent kustom](docs/integrasi-agent-kustom.md) dan [contoh klien Python](examples/custom-agent/). Backend bot cukup memakai endpoint Streamable HTTP dan token MCP dari akun pengelola bot.
+
 1. Pastikan `MCP_TRANSPORT=both` dan `ACCOUNTS_PUBLIC_ORIGIN` memakai satu origin HTTPS utama, misalnya `https://www.mcpsatudataaceh.web.id`.
 2. Pada pengaturan MCP/custom connection klien AI, gunakan `https://www.mcpsatudataaceh.web.id/mcp` dan autentikasi OAuth. Ketersediaan menu bergantung pada klien, akun, dan kebijakan workspace.
 3. Untuk klien yang mendukung discovery/CIMD/DCR, biarkan client ID dan secret kosong agar diperoleh otomatis. Public client menggunakan `token_endpoint_auth_method=none` plus PKCE; confidential DCR client juga dapat menggunakan `client_secret_post` atau `client_secret_basic`.
@@ -46,7 +48,9 @@ Discovery publik (tidak membutuhkan login):
 - `GET /authorize`, `POST /token`, `POST /register`, `POST /revoke`.
 - Persetujuan akun menggunakan `POST /api/oauth/consent` dengan cookie, pemeriksaan Origin dan CSRF.
 
-`resource` wajib pada authorize/token dan harus sama persis dengan URL `/mcp` atau `/sse` pada origin utama. Token untuk `/mcp` tidak diterima pada `/sse`, dan sebaliknya. Callback harus terdaftar, HTTPS (HTTP hanya untuk loopback native), tanpa fragment/userinfo; redirect wildcard tidak digunakan. `iss` dikembalikan pada callback sukses maupun penolakan. DCR menggunakan SDK MCP; CIMD hanya mengambil metadata HTTPS dari host pada `OAUTH_CIMD_HOSTS` (default `chatgpt.com,claude.ai`), maksimal 16 KiB, tanpa redirect, dengan pencocokan `client_id` dan callback. Metadata CIMD di-cache satu jam. Klien lain dapat memakai DCR tanpa menambahkan host; jangan memasukkan host yang tidak dipercaya ke allowlist CIMD.
+`resource` wajib pada authorize/token dan harus sama persis dengan URL `/mcp` atau `/sse` pada origin utama. Token berlaku untuk resource yang diminta. Callback harus terdaftar, memakai HTTPS atau HTTP loopback, serta bebas dari fragment dan userinfo. Untuk metadata CIMD yang menyatakan aplikasi native, port callback HTTP pada alamat IP loopback boleh berbeda, dengan skema, alamat IP, path, dan query yang tetap cocok. `iss` dikembalikan pada callback sukses maupun penolakan.
+
+DCR menggunakan SDK MCP. CIMD hanya mengambil metadata HTTPS dari host pada `OAUTH_CIMD_HOSTS` (default `chatgpt.com,claude.ai,opencode.ai`), maksimal 16 KiB, tanpa mengikuti redirect. Metadata disimpan selama satu jam. Jika VPS menggunakan daftar eksplisit, tambahkan `opencode.ai` ke daftar host tepercaya untuk mengaktifkan OAuth OpenCode. Klien lain dapat memakai DCR tanpa menambahkan host.
 
 Endpoint OAuth tidak memerlukan API key OpenAI, Google OAuth, maupun perubahan autentikasi BPS. Dukungan protokol perlu tetap diuji pada klien AI tujuan; server ini tidak otomatis mempublikasikan plugin ke direktori penyedia AI.
 

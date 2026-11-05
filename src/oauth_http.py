@@ -17,6 +17,7 @@ from mcp.server.auth.middleware.client_auth import ClientAuthenticator
 from mcp.server.auth.provider import construct_redirect_uri, RegistrationError
 from mcp.server.auth.settings import ClientRegistrationOptions
 from mcp.shared.auth import OAuthClientInformationFull
+from pydantic import AnyUrl
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -26,6 +27,23 @@ from .accounts import get_vault
 from .oauth import OAuthStore, SCOPE, origin, resources, valid_redirect
 
 _resource = ContextVar('oauth_token_resource', default=None)
+
+
+class MetadataOAuthClient(OAuthClientInformationFull):
+    native_loopback: bool = False
+
+    def validate_redirect_uri(self, redirect_uri: AnyUrl | None) -> AnyUrl:
+        if self.native_loopback and redirect_uri and valid_redirect(str(redirect_uri)):
+            requested = urlsplit(str(redirect_uri))
+            if requested.scheme == 'http' and requested.hostname in {'127.0.0.1', '::1'}:
+                for registered_uri in self.redirect_uris or []:
+                    registered = urlsplit(str(registered_uri))
+                    # RFC 8252: only the port may differ for native loopback redirects.
+                    if (registered.scheme, registered.hostname, registered.path, registered.query) == (
+                        requested.scheme, requested.hostname, requested.path, requested.query
+                    ):
+                        return redirect_uri
+        return super().validate_redirect_uri(redirect_uri)
 
 
 class AccountOAuthProvider:
@@ -38,14 +56,19 @@ class AccountOAuthProvider:
             return None
         existing = self.store.client(client_id)
         is_url = client_id.startswith('https://')
-        if existing and (not is_url or existing[1] > time.time() - 3600):
+        if existing and not is_url:
             return OAuthClientInformationFull.model_validate(existing[0])
         # CIMD fetching is restricted to administrator-approved origins, with no redirects.
         # Other clients can use DCR without any server-side URL fetching.
-        parsed = urlsplit(client_id)
-        hosts = set(filter(None, os.getenv('OAUTH_CIMD_HOSTS', 'chatgpt.com,claude.ai').split(',')))
-        if not is_url or parsed.hostname not in hosts or parsed.port not in {None, 443} or parsed.username or parsed.password or parsed.query or parsed.fragment or not parsed.path.strip('/'):
+        hosts = {host.strip().lower() for host in os.getenv('OAUTH_CIMD_HOSTS', 'chatgpt.com,claude.ai,opencode.ai').split(',')}
+        try:
+            parsed = urlsplit(client_id)
+            if not is_url or parsed.hostname not in hosts or parsed.port not in {None, 443} or parsed.username or parsed.password or parsed.query or parsed.fragment or not parsed.path.strip('/'):
+                return None
+        except ValueError:
             return None
+        if existing and existing[1] > time.time() - 3600:
+            return MetadataOAuthClient.model_validate(existing[0])
         if not get_vault().throttle('oauth-cimd-global', 100, 60):
             return None
         try:
@@ -59,12 +82,20 @@ class AccountOAuthProvider:
                         if len(raw) > 16384:
                             return None
             data = json.loads(raw)
-            if data.get('client_id') != client_id:
+            if not isinstance(data, dict) or data.get('client_id') != client_id:
                 return None
             methods = data.get('token_endpoint_auth_methods_supported', [data.get('token_endpoint_auth_method', 'none')])
             if not isinstance(methods, list) or 'none' not in methods:
                 return None
-            info = OAuthClientInformationFull.model_validate({**data, 'client_id': client_id, 'client_secret': None, 'client_secret_expires_at': None, 'token_endpoint_auth_method': 'none', 'scope': SCOPE})
+            info = MetadataOAuthClient.model_validate({
+                **data,
+                'client_id': client_id,
+                'client_secret': None,
+                'client_secret_expires_at': None,
+                'token_endpoint_auth_method': 'none',
+                'scope': SCOPE,
+                'native_loopback': data.get('application_type') == 'native',
+            })
             self.validate_client(info)
             self.store.put_client(info)
             return info
