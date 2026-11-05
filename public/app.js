@@ -95,11 +95,10 @@ function setAuthMode(mode) {
   const copy = {
     login: ['Selamat datang kembali.', 'Masuk untuk mengelola koneksi data Anda.', 'Masuk ke akun'],
     register: ['Mulai dari akun Anda.', 'Daftar, verifikasi email, lalu siapkan koneksi BPS.', 'Daftar dan kirim verifikasi'],
-    resend: ['Belum menerima email?', 'Gunakan email dan password akun Anda untuk meminta tautan verifikasi baru.', 'Kirim ulang email verifikasi']
+    resend: ['Belum menerima email?', 'Gunakan email dan sandi akun Anda untuk meminta tautan verifikasi baru.', 'Kirim ulang email verifikasi']
   }[mode];
   $('authTitle').textContent = copy[0]; $('authIntro').textContent = copy[1]; $('authSubmit').textContent = copy[2];
   $('confirmGroup').hidden = mode !== 'register'; $('passwordConfirm').required = !$('confirmGroup').hidden;
-  $('passwordHint').hidden = mode !== 'register'; $('passwordLabel').textContent = 'Sandi';
   $('password').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
   $('tab-login').setAttribute('aria-current', mode === 'login' ? 'page' : 'false'); $('tab-register').setAttribute('aria-current', mode === 'register' ? 'page' : 'false');
   if (!$('email').value && state.email) $('email').value = state.email;
@@ -185,7 +184,7 @@ $('copySecret').addEventListener('click', () => copy(state.secret, 'Credential')
 $('secretContinue').addEventListener('click', () => { if (!$('secretSaved').checked) return; state.secret = ''; $('oneTimeSecret').textContent = ''; location.hash = state.secretNext; });
 $('authForm').addEventListener('submit', async event => {
   event.preventDefault(); message('authError', '');
-  if (state.authMode === 'register' && $('password').value !== $('passwordConfirm').value) { message('authError', 'Kedua password belum sama. Periksa konfirmasi password.'); $('passwordConfirm').focus(); return; }
+  if (state.authMode === 'register' && $('password').value !== $('passwordConfirm').value) { message('authError', 'Kedua sandi belum sama. Periksa isian ulang sandi.'); $('passwordConfirm').focus(); return; }
   const mode = state.authMode; state.email = $('email').value.trim();
   await busy('authSubmit', mode === 'login' ? 'Memeriksa akun…' : 'Memproses…', async () => {
     try {
@@ -396,13 +395,13 @@ async function logout() {
 $('logout').addEventListener('click', logout); $('logoutSecondary').addEventListener('click', logout);
 $('passwordForm').addEventListener('submit', async event => {
   event.preventDefault();
-  if ($('newPassword').value !== $('newPasswordConfirm').value) { message('dashboardError', 'Kedua password baru belum sama.'); return; }
-  await busy('changePassword', 'Mengganti password…', async () => {
+  if ($('newPassword').value !== $('newPasswordConfirm').value) { message('dashboardError', 'Kedua sandi baru belum sama.'); return; }
+  await busy('changePassword', 'Mengganti sandi…', async () => {
     try { await account('password', { old_password: $('oldPassword').value, password: $('newPassword').value }); state.profile = null; state.csrf = ''; $('oldPassword').value = ''; $('newPassword').value = ''; $('newPasswordConfirm').value = ''; updateAccount(); location.hash = 'login'; toast('Sandi diganti. Masuk kembali dan hubungkan ulang aplikasi AI.'); }
     catch (error) { message('dashboardError', error.message); }
   });
 });
-document.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', () => { const input = $(button.dataset.toggle); const visible = input.type === 'password'; input.type = visible ? 'text' : 'password'; button.textContent = visible ? 'Sembunyikan' : 'Lihat'; button.setAttribute('aria-label', (visible ? 'Sembunyikan ' : 'Tampilkan ') + (button.dataset.toggle === 'savedKey' ? 'API key' : 'password')); }));
+document.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', () => { const input = $(button.dataset.toggle); const visible = input.type === 'password'; input.type = visible ? 'text' : 'password'; button.textContent = visible ? 'Sembunyikan' : 'Lihat'; button.setAttribute('aria-label', (visible ? 'Sembunyikan ' : 'Tampilkan ') + (button.dataset.toggle === 'savedKey' ? 'API key' : 'sandi')); }));
 function endpoint() { $('oauthEndpoint').textContent = state.config.mcp_url || location.origin + '/mcp'; $('endpoint').textContent = ($('transport').value === 'mcp' ? state.config.mcp_url : state.config.sse_url) || location.origin + '/' + $('transport').value; }
 $('copyOAuthEndpoint').addEventListener('click', () => copy($('oauthEndpoint').textContent, 'URL MCP'));
 $('transport').addEventListener('change', endpoint); $('copyEndpoint').addEventListener('click', () => copy($('endpoint').textContent, 'Endpoint')); endpoint();

@@ -24,7 +24,7 @@ def digest(value):
 
 def password_hash(password, salt=None):
     if not isinstance(password, str) or not 12 <= len(password) <= 256:
-        raise ValueError('Password harus 12–256 karakter.')
+        raise ValueError('Sandi ini tidak dapat digunakan. Coba frasa sandi lain.')
     salt = salt or secrets.token_bytes(16)
     hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**17, r=8, p=1, maxmem=256*1024*1024)
     return salt.hex() + ':' + hashed.hex()
@@ -129,13 +129,13 @@ class Vault:
         email = self.email(email)
         with self.db() as db: user = db.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
         valid = verify_password(password, user['password'] if user else self.dummy_password)
-        if not user or not valid: raise ValueError('Email atau password tidak cocok.')
+        if not user or not valid: raise ValueError('Email atau sandi tidak cocok.')
         if not user['email_verified']: raise ValueError('Email belum diverifikasi. Periksa inbox/spam atau gunakan Kirim ulang verifikasi.')
         token = 'ses_' + secrets.token_urlsafe(32)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             current=db.execute('SELECT password FROM users WHERE id=?',(user['id'],)).fetchone()
-            if not current or not hmac.compare_digest(current[0],user['password']): raise ValueError('Email atau password tidak cocok.')
+            if not current or not hmac.compare_digest(current[0],user['password']): raise ValueError('Email atau sandi tidak cocok.')
             db.execute('DELETE FROM sessions WHERE expires<=?',(int(time.time()),))
             db.execute('INSERT INTO sessions VALUES(?,?,?)',(digest(token),user['id'],int(time.time())+43200))
         return token
@@ -274,14 +274,14 @@ class Vault:
 
     def change_password(self,uid,old,new,*,session=None):
         with self.db() as db: row=db.execute('SELECT password FROM users WHERE id=?',(uid,)).fetchone()
-        if not row or not verify_password(old,row[0]): raise ValueError('Password saat ini tidak cocok.')
+        if not row or not verify_password(old,row[0]): raise ValueError('Sandi saat ini tidak cocok.')
         encoded=password_hash(new)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             if session is not None and not self._active_session(db, uid, session):
                 raise ValueError('Sesi telah berakhir. Silakan masuk kembali.')
             changed=db.execute('UPDATE users SET password=? WHERE id=? AND password=?',(encoded,uid,row[0]))
-            if changed.rowcount!=1: raise ValueError('Password berubah; silakan login kembali.')
+            if changed.rowcount!=1: raise ValueError('Sandi berubah. Silakan masuk kembali.')
             self._revoke_access(db, uid)
 
     @staticmethod
