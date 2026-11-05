@@ -42,4 +42,4 @@ python -m unittest discover -s tests -q
 - [`public/`](public/) berisi sumber aset situs. Salin perubahan aset ke [`src/static/`](src/static/) agar paket Python dan Nginx menyajikan versi yang sama. CI memeriksa kesesuaian keduanya.
 - [`tests/`](tests/) berisi pengujian dengan data dan akun sintetis. [`deploy/`](deploy/) berisi konfigurasi Nginx dan skrip rilis VPS.
 
-Baca [audit fitur](docs/feature-audit.md) untuk batas data dan keputusan kompatibilitas. Gateway Cloudflare dikelola di [repositori Worker terpisah](https://github.com/abdrhmn09/MCP_SatuDataAceh_Worker). Proyek ini memakai [lisensi MIT](LICENSE).
+Baca [audit fitur](docs/feature-audit.md) untuk batas data dan keputusan kompatibilitas. Gateway Cloudflare dikelola di [repositori Worker terpisah](https://github.com/abdrhmn09/MCP_SatuDataAceh_Worker).
