@@ -1,6 +1,6 @@
 # Panduan pemasangan MCP Satu Data Aceh
 
-Mulai dengan **server jarak jauh melalui OAuth**. Server sudah berjalan di VPS, sehingga Anda cukup menambahkan URL MCP ke klien dan masuk. Bagian STDIO ditujukan untuk pengguna yang ingin menjalankan server sendiri.
+Gunakan **server jarak jauh dengan OAuth** untuk menghubungkan aplikasi AI ke layanan publik. Pilih **STDIO** jika Anda ingin menjalankan server di perangkat sendiri.
 
 | Aplikasi | Mode yang bisa dipilih | Konfigurasi |
 |---|---|---|
@@ -10,11 +10,11 @@ Mulai dengan **server jarak jauh melalui OAuth**. Server sudah berjalan di VPS, 
 | Google Antigravity | Server jarak jauh atau STDIO | `mcp_config.json` dengan `mcpServers` |
 | VS Code | Server jarak jauh atau STDIO | `.vscode/mcp.json` dengan `servers` |
 | OpenCode | Server jarak jauh dengan OAuth | `opencode.json` dengan `mcp` |
-| Bot RAG atau agent kustom | Server jarak jauh dengan token MCP | [Panduan integrasi backend dan contoh Python](integrasi-agent-kustom.md) |
+| Bot RAG atau agen AI | Server jarak jauh dengan token MCP | [Panduan integrasi backend dan contoh Python](integrasi-agent-kustom.md) |
 
 ## Server jarak jauh dengan OAuth
 
-Gunakan URL **`https://www.mcpsatudataaceh.web.id/mcp`**. Buat akun di situs MCP dan verifikasi email. Untuk mengakses data BPS, simpan API key Web API BPS melalui menu **API key**. Dataset portal Aceh dapat dicari melalui akun tanpa key BPS. Setelah klien membuka halaman persetujuan, periksa nama aplikasi dan callback, lalu izinkan akses. Izin dapat dicabut melalui **Aplikasi terhubung**.
+Gunakan URL **`https://www.mcpsatudataaceh.web.id/mcp`**. Buat akun di situs MCP dan verifikasi email. Untuk mengakses data BPS, simpan kunci Web API BPS melalui menu **API key**. Penelusuran Portal Satu Data Aceh tidak memerlukan kunci BPS. Periksa nama aplikasi dan alamat callback pada halaman persetujuan, lalu izinkan akses. Kelola izin melalui **Aplikasi terhubung**.
 
 ### ChatGPT Web
 
@@ -46,7 +46,7 @@ Di Antigravity IDE, buka menu panel agent **… → MCP Servers → Manage MCP S
 }
 ```
 
-Pilih **Authenticate** bila tersedia dan ikuti langkah login. Jika klien memerlukan header manual, buat token melalui dashboard **Token manual** dan tambahkan `"headers": {"Authorization": "Bearer TOKEN_MCP_ANDA"}` pada entri server. Ganti placeholder di konfigurasi pribadi dengan token MCP akun Anda. Simpan konfigurasi berisi token di luar Git.
+Pilih **Authenticate** jika tersedia, lalu masuk dan setujui akses. Jika klien menggunakan autentikasi manual, buat token melalui **Aplikasi terhubung → Token manual** dan tambahkan `"headers": {"Authorization": "Bearer TOKEN_MCP_ANDA"}` pada entri server. Ganti nilai contoh dengan token akun Anda. Simpan konfigurasi yang memuat token di luar repositori.
 
 Rujukan [Google Antigravity – MCP](https://antigravity.google/docs/mcp).
 
@@ -83,9 +83,9 @@ Tambahkan entri berikut ke bagian `mcp` di `opencode.json`.
 }
 ```
 
-Jalankan `opencode mcp auth satu-data-aceh` dan setujui akses di browser. Periksa status dengan `opencode mcp list`. Jika konfigurasi VPS menetapkan `OAUTH_CIMD_HOSTS` secara eksplisit, masukkan `opencode.ai` ke daftar tersebut dan mulai ulang layanan MCP.
+Jalankan `opencode mcp auth satu-data-aceh` dan setujui akses di peramban. Periksa status dengan `opencode mcp list`.
 
-Jika server belum mendukung OAuth OpenCode, buat token MCP manual dari **Aplikasi terhubung**. Di entri OpenCode, gunakan `"oauth": false` dan `"headers": { "Authorization": "Bearer {env:SDA_MCP_TOKEN}" }`. Sediakan token MCP pada variabel lingkungan `SDA_MCP_TOKEN` saat membuka OpenCode.
+Untuk autentikasi manual, buat token MCP melalui **Aplikasi terhubung**. Pada entri OpenCode, gunakan `"oauth": false` dan `"headers": { "Authorization": "Bearer {env:SDA_MCP_TOKEN}" }`. Tetapkan token pada variabel lingkungan `SDA_MCP_TOKEN` saat menjalankan OpenCode.
 
 Rujukan [dokumentasi MCP OpenCode](https://opencode.ai/docs/mcp-servers/#oauth).
 
@@ -139,4 +139,4 @@ Rujukan [MCP Python SDK – Connect to a real host](https://py.sdk.modelcontextp
 
 1. Tanyakan **“Cari dataset inflasi Aceh dengan tool `search` dan tampilkan ID serta tautannya.”** Periksa bahwa klien memanggil tool MCP.
 2. Untuk BPS, minta klien menjalankan `bps_request` dengan `operation: "listDomains"` dan `parameters: {"type":"prov"}`. Periksa bahwa hasil berisi domain Aceh `1100`.
-3. Jika pencarian portal berhasil tetapi BPS gagal, cek API key di dashboard untuk OAuth atau di `.env` untuk STDIO. Jika seluruh tool absen, cek status koneksi di aplikasi. Untuk STDIO, periksa path Python, hasil instalasi, dan log proses.
+3. Jika penelusuran portal berhasil dan permintaan BPS gagal, periksa kunci API pada dasbor untuk OAuth atau pada `.env` untuk STDIO. Jika alat MCP tidak tersedia, periksa status koneksi di aplikasi. Untuk STDIO, periksa lokasi Python, hasil instalasi, dan log proses.

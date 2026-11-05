@@ -1,35 +1,35 @@
 # MCP Satu Data Aceh
 
-Hubungkan asisten AI dan aplikasi Anda ke katalog **Portal Satu Data Aceh** serta statistik dari **Web API BPS**. Proyek independen ini menyediakan akses baca dan membantu pengguna menelusuri sumber data yang dipakai dalam jawaban.
+MCP Satu Data Aceh menyediakan akses baca ke katalog **Portal Satu Data Aceh** dan statistik dari **Web API BPS** bagi asisten AI dan aplikasi. Hasil penelusuran menyertakan rujukan agar pengguna dapat memeriksa sumber data.
 
 **[Buka MCP Satu Data Aceh](https://www.mcpsatudataaceh.web.id/)**
 
-| Saya ingin | Mulai di sini |
+| Kebutuhan | Panduan |
 | --- | --- |
-| Mencoba data dari browser | [Jelajahi data](https://www.mcpsatudataaceh.web.id/#explore) |
-| Menghubungkan ChatGPT, Claude, OpenCode, Antigravity, atau VS Code | [Panduan pemasangan per aplikasi](docs/panduan-pemasangan-mcp.md) |
-| Menambahkan data Aceh dan BPS ke bot RAG atau agent buatan sendiri | [Panduan integrasi backend](docs/integrasi-agent-kustom.md) |
-| Memahami tool, respons, dan alur OAuth | [Referensi teknis MCP](docs/referensi-mcp.md) |
-| Menjalankan atau memelihara server | [Panduan deployment](docs/deployment.md) |
+| Penelusuran data melalui peramban | [Jelajahi data](https://www.mcpsatudataaceh.web.id/#explore) |
+| Koneksi aplikasi AI | [Panduan pemasangan per aplikasi](docs/panduan-pemasangan-mcp.md) |
+| Integrasi bot RAG atau agen AI | [Panduan integrasi backend](docs/integrasi-agent-kustom.md) |
+| Spesifikasi alat MCP, respons, dan OAuth | [Referensi teknis](docs/referensi-mcp.md) |
+| Pemasangan dan pemeliharaan server | [Panduan operasional](docs/deployment.md) |
 
 ## Mulai menggunakan
 
 1. [Buat akun](https://www.mcpsatudataaceh.web.id/#register), verifikasi email, lalu masuk.
-2. Untuk statistik BPS, simpan API key yang Anda peroleh dari [Web API BPS](https://webapi.bps.go.id/documentation/) di menu **API key**. Pencarian dataset Portal Satu Data Aceh dapat dipakai tanpa API key BPS.
-3. Di aplikasi AI, tambahkan endpoint `https://www.mcpsatudataaceh.web.id/mcp` sebagai server **Streamable HTTP**. Pilih **OAuth**, masuk saat diminta, lalu setujui akses.
+2. Untuk mengakses statistik BPS, simpan kunci dari [Web API BPS](https://webapi.bps.go.id/documentation/) melalui menu **API key**. Katalog Portal Satu Data Aceh dapat digunakan setelah akun terverifikasi.
+3. Di aplikasi AI, tambahkan endpoint `https://www.mcpsatudataaceh.web.id/mcp` sebagai server **Streamable HTTP**. Pilih **OAuth**, lalu masuk dan setujui akses.
 
-Coba minta asisten mencari dataset inflasi Aceh dan menyertakan tautan sumber. Untuk bantuan login, buka [Lupa sandi](https://www.mcpsatudataaceh.web.id/#forgot-password). Akses aplikasi dapat dicabut melalui [Aplikasi terhubung](https://www.mcpsatudataaceh.web.id/#apps).
+Untuk memeriksa koneksi, minta asisten mencari dataset inflasi Aceh dan menyertakan tautan sumber. Pulihkan akses akun melalui [Lupa sandi](https://www.mcpsatudataaceh.web.id/#forgot-password) dan kelola izin melalui [Aplikasi terhubung](https://www.mcpsatudataaceh.web.id/#apps).
 
-## Untuk developer bot
+## Integrasi aplikasi
 
-Backend bot dapat memakai endpoint yang sama dan mengirim header `Authorization: Bearer <TOKEN_MCP>`. Buat token melalui **Aplikasi terhubung → Token manual**. Simpan token sebagai secret pada backend bot dan kelola API key BPS melalui dashboard.
+Backend aplikasi dapat menggunakan endpoint yang sama dengan header `Authorization: Bearer <TOKEN_MCP>`. Buat token melalui **Aplikasi terhubung → Token manual** dan simpan di penyimpanan rahasia backend.
 
 - Portal Satu Data Aceh memakai `search` untuk menemukan dataset dan `fetch` untuk membuka hasil berdasarkan ID.
 - Web API BPS memakai `bps_endpoints` untuk melihat operasi dan parameter, lalu `bps_request` untuk mengambil data.
 
-Lihat [panduan agent kustom](docs/integrasi-agent-kustom.md) dan [contoh Python](examples/custom-agent/) untuk menguji koneksi, mengelola token, dan menggabungkan sumber data publik dengan RAG internal.
+Contoh integrasi dan pemeriksaan koneksi tersedia dalam [klien Python](examples/custom-agent/).
 
-## Pengembangan
+## Instalasi lokal dan pengujian
 
 Gunakan Python 3.11 atau lebih baru. Jalankan perintah berikut dari direktori repositori dalam lingkungan virtual.
 
@@ -38,8 +38,7 @@ python -m pip install -e .
 python -m unittest discover -s tests -q
 ```
 
-- [`src/`](src/) berisi server Python, tool MCP, adapter data, akun, dan OAuth.
+- [`src/`](src/) berisi server Python, alat MCP, adapter data, pengelolaan akun, dan OAuth.
 - [`public/`](public/) berisi sumber aset situs. Salin perubahan aset ke [`src/static/`](src/static/) agar paket Python dan Nginx menyajikan versi yang sama. CI memeriksa kesesuaian keduanya.
 - [`tests/`](tests/) berisi pengujian dengan data dan akun sintetis. [`deploy/`](deploy/) berisi konfigurasi Nginx dan skrip rilis VPS.
 
-Baca [audit fitur](docs/feature-audit.md) untuk batas data dan keputusan kompatibilitas. Gateway Cloudflare dikelola di [repositori Worker terpisah](https://github.com/abdrhmn09/MCP_SatuDataAceh_Worker).

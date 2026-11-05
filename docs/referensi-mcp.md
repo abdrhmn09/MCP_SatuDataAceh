@@ -1,40 +1,46 @@
 # Referensi teknis MCP Satu Data Aceh
 
-Untuk memasang konektor, buka [panduan per aplikasi](panduan-pemasangan-mcp.md). Untuk bot yang berjalan di backend, lihat [panduan agent kustom](integrasi-agent-kustom.md).
+Lihat [panduan pemasangan](panduan-pemasangan-mcp.md) untuk konfigurasi klien dan [panduan integrasi aplikasi](integrasi-agent-kustom.md) untuk koneksi dari backend.
 
-## Tool dan sumber data
+## Alat MCP dan sumber data
 
-| Tool | Fungsi |
+| Alat MCP | Fungsi |
 | --- | --- |
-| `search` | Mencari dataset berdasarkan kata kunci katalog Aceh. Mendukung filter metadata dan pagination. |
-| `fetch` | Membuka dataset berdasarkan ID. Mengembalikan sumber, preview CSV, dan metadata kualitas. |
+| `search` | Mencari dataset berdasarkan kata kunci katalog Aceh. Mendukung penyaringan metadata dan penelusuran per halaman. |
+| `fetch` | Membuka dataset berdasarkan ID. Mengembalikan rujukan sumber, pratinjau CSV, dan metadata kualitas. |
 | `bps_endpoints` | Menampilkan daftar operasi BPS atau skema parameter suatu operasi. |
 | `bps_request` | Menjalankan operasi baca BPS dengan parameter yang divalidasi. |
 | `bps_check_key` | Menguji kredensial akun dengan satu operasi sampel pada layanan BPS atau SDGs. |
 | `bandingkan_data` | Meninjau kesepadanan sumber untuk indikator yang dipetakan. |
-| `cari_katalog_data`, `baca_isi_csv` | Tool kompatibilitas untuk klien lama. Untuk integrasi baru, gunakan `search` dan `fetch`. |
+| `cari_katalog_data`, `baca_isi_csv` | Menampilkan hasil pencarian dan pratinjau CSV dalam format teks. Untuk hasil terstruktur, gunakan `search` dan `fetch`. |
 
 ### Portal Satu Data Aceh
 
-Gunakan `search` untuk mengambil ID dan URL sumber. Parameter opsional mencakup `wilayah`, `produsen`, `limit`, dan `offset`. Filter wilayah bekerja pada metadata katalog. Untuk memeriksa wilayah yang benar-benar ada dalam CSV, panggil `fetch` dan periksa `metadata.coverage`.
+Gunakan `search` untuk memperoleh ID dataset dan URL sumber. Parameter opsional mencakup `wilayah`, `produsen`, `limit`, dan `offset`. Penyaringan wilayah berlaku pada metadata katalog. Periksa `metadata.coverage` dari `fetch` untuk mengetahui cakupan wilayah pada baris CSV.
 
-Preview `fetch` dibatasi 50 baris. Data terstruktur mencakup nama kolom, baris, jumlah baris, dan penanda pemotongan. Nilai kosong atau tidak hingga menjadi `null`. Hasil tetap merujuk dataset yang dipilih. Untuk mengambil sumber BPS, panggil tool BPS secara eksplisit.
+Pratinjau `fetch` mencakup hingga 50 baris dari dataset yang dipilih. Data terstruktur memuat nama kolom, baris, jumlah baris, dan penanda pemotongan. Nilai kosong atau tidak hingga disajikan sebagai `null`. Status CSV `valid` menunjukkan bahwa format berkas dapat dibaca.
 
 ### Web API BPS dan SDGs
 
-Registry mencakup 59 operasi GET, termasuk data statistik, publikasi, sensus, perdagangan, klasifikasi, dan SDGs Access. Ketersediaan tiap operasi bergantung pada parameter, hak akses, dan layanan BPS. Temukan skema dengan `bps_endpoints`, lalu gunakan `bps_request`.
+Registri mencakup 59 operasi GET, termasuk data statistik, publikasi, sensus, perdagangan, klasifikasi, dan SDGs Access. Ketersediaan tiap operasi bergantung pada parameter, hak akses, dan layanan BPS. Gunakan `bps_endpoints` untuk melihat skema sebelum memanggil `bps_request`.
 
 ```json
 {"operation":"listVariables","parameters":{"domain":"1100","page":1}}
 ```
 
-Kode domain Aceh adalah `1100` dan nasional `0000`. Ambil kode variabel melalui `listVariables` dan ID periode melalui `listPeriods` sebelum memanggil `getData`. Ikuti pagination dan periksa `ok` serta `error` pada hasil. ID periode BPS berbeda dari tahun kalender.
+Kode domain Aceh adalah `1100` dan kode domain nasional adalah `0000`. Ambil kode variabel melalui `listVariables` dan ID periode melalui `listPeriods` sebelum memanggil `getData`. Ikuti penelusuran per halaman dan periksa `ok` serta `error` pada hasil. Gunakan ID periode yang diterbitkan BPS.
 
-API key BPS dan token SDGs Access dikelola secara terpisah. Untuk server lokal STDIO, pasang `BPS_API_KEY` dan, bila diperlukan, `BPS_SDGS_TOKEN` pada environment proses. Pada layanan remote, simpan kredensial di dashboard akun.
+Kunci API BPS dan token SDGs Access dikelola secara terpisah. Untuk server lokal STDIO, tetapkan `BPS_API_KEY` dan, bila diperlukan, `BPS_SDGS_TOKEN` pada lingkungan proses. Untuk layanan jarak jauh, simpan kredensial melalui dasbor akun.
 
 Di menu **API key**, **Uji koneksi BPS** menguji satu sampel tiap operasi secara bertahap. Operasi yang belum memiliki kredensial ditandai **Belum diuji**. Pengguna dapat memfilter status, menyalin laporan, dan membatalkan pengujian. Pengujian dapat dijalankan satu kali per akun setiap sepuluh menit.
 
-Registry disimpan di [`src/bps_operations.json`](../src/bps_operations.json). [Generator registry](../scripts/update_bps_registry.py) menggunakan spesifikasi YAML BPS dan PyYAML. Untuk batas penilaian kesepadanan dan catatan kegagalan upstream, lihat [audit fitur](feature-audit.md).
+Registri tersedia di [`src/bps_operations.json`](../src/bps_operations.json). [Skrip pembaruan registri](../scripts/update_bps_registry.py) menggunakan spesifikasi YAML BPS dan PyYAML.
+
+### Kesepadanan antarsumber
+
+`bandingkan_data` menilai kesepadanan berdasarkan metadata yang tersedia, termasuk konsep, satuan, wilayah, periode, subperiode, dan kategori. Konflik metadata, misalnya antara inflasi bulanan dan tahunan, dapat menyebabkan kesepadanan berstatus belum terverifikasi. Untuk analisis per observasi, periksa definisi indikator, cakupan, dan nilai pada masing-masing sumber.
+
+Jika pemeriksaan metadata periode belum lengkap, gunakan `listPeriods` dan `getData` dengan periode dan dimensi yang diperlukan untuk menelusuri data BPS secara langsung.
 
 ## OAuth dan discovery
 

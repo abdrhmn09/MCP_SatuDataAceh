@@ -1,4 +1,4 @@
-# Deployment dan pemeliharaan MCP Satu Data Aceh
+# Pemasangan dan pemeliharaan server MCP Satu Data Aceh
 
 Panduan ini untuk operator server. Untuk memakai server yang sudah tersedia, ikuti [panduan pengguna dan aplikasi](panduan-pemasangan-mcp.md).
 
@@ -12,7 +12,7 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-Buat master key sekali untuk instalasi baru dan simpan hasilnya sebagai `ACCOUNTS_ENCRYPTION_KEY` dalam konfigurasi privat atau secret manager.
+Buat kunci enkripsi utama untuk instalasi baru. Simpan hasilnya sebagai `ACCOUNTS_ENCRYPTION_KEY` dalam konfigurasi privat atau layanan pengelolaan rahasia.
 
 ```bash
 python3 -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())"
@@ -21,7 +21,7 @@ python3 -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32
 | Pengaturan | Kegunaan |
 | --- | --- |
 | `ACCOUNTS_DB_PATH` | Lokasi SQLite di penyimpanan persisten yang bisa ditulis oleh akun layanan. |
-| `ACCOUNTS_ENCRYPTION_KEY` | Master key vault. Pertahankan nilai yang cocok dengan database saat restart atau pemulihan. |
+| `ACCOUNTS_ENCRYPTION_KEY` | Kunci enkripsi utama. Gunakan nilai yang sesuai dengan basis data saat memulai ulang atau memulihkan layanan. |
 | `ACCOUNTS_PUBLIC_ORIGIN` | Origin HTTPS utama tanpa path untuk tautan email dan discovery OAuth. |
 | `ACCOUNTS_ALLOWED_ORIGINS` | Origin dashboard tambahan yang diizinkan, jika ada. |
 | `MCP_ALLOWED_HOSTS`, `MCP_ALLOWED_ORIGINS` | Host dan origin yang diizinkan untuk transport MCP. Sesuaikan dengan Nginx dan klien browser yang digunakan. |
@@ -30,15 +30,15 @@ python3 -c "import base64,secrets; print(base64.b64encode(secrets.token_bytes(32
 | `OAUTH_CIMD_HOSTS` | Daftar host metadata klien OAuth tepercaya. Lihat [aturan discovery](referensi-mcp.md#oauth-dan-discovery). |
 | `ACCOUNTS_DEV_HTTP` | Tetapkan `0` pada produksi. Mode pengembangan HTTP terbatas pada loopback. |
 
-Untuk systemd, atur direktori kerja dan environment file sesuai checkout produksi. Jalankan layanan melalui `.venv/bin/python -m src.server` atau entrypoint `satu-data-aceh` agar middleware akun terpasang. Gunakan [konfigurasi Nginx](../deploy/nginx.conf) sebagai contoh routing dashboard, API, dan transport MCP. Periksa konfigurasi dengan `sudo nginx -t` sebelum memuatnya.
+Untuk systemd, tetapkan direktori kerja dan berkas lingkungan sesuai direktori instalasi produksi. Jalankan layanan melalui `.venv/bin/python -m src.server` atau `satu-data-aceh` agar middleware autentikasi akun aktif. Gunakan [konfigurasi Nginx](../deploy/nginx.conf) sebagai rujukan untuk dasbor, API, dan transport MCP. Periksa konfigurasi dengan `sudo nginx -t` sebelum memuatnya.
 
 Pada pemasangan pertama, salin isi [`public/`](../public/) ke direktori `root` yang ditetapkan di konfigurasi Nginx. Untuk pembaruan berikutnya, gunakan skrip rilis di bawah agar pemasangan backend dan aset terurut.
 
-Untuk Docker, isi konfigurasi lalu jalankan `docker compose up -d --build`. [Compose](../compose.yaml) memetakan port ke loopback host dan menyimpan akun di volume `account-data`. Pertahankan volume saat memperbarui container. [Template Render](../render.yaml) memakai paket yang mendukung disk persisten.
+Untuk Docker, isi konfigurasi lalu jalankan `docker compose up -d --build`. [Compose](../compose.yaml) memetakan port ke loopback host dan menyimpan data akun di volume `account-data`. Pertahankan volume saat memperbarui kontainer. [Templat Render](../render.yaml) menggunakan paket yang mendukung disk persisten.
 
 ## Rilis ke VPS yang sudah berjalan
 
-Skrip [rilis VPS](../deploy/release-vps.sh) ditujukan untuk checkout produksi systemd dengan Nginx pada domain proyek. Dari checkout yang bersih, ambil commit rilis dan gunakan SHA lengkap yang akan dipasang.
+Skrip [rilis VPS](../deploy/release-vps.sh) digunakan untuk instalasi produksi systemd dengan Nginx pada domain proyek. Jalankan dari direktori repositori produksi dengan pohon kerja bersih. Gunakan SHA lengkap commit rilis.
 
 ```bash
 git fetch origin main
@@ -46,13 +46,13 @@ sudo -v
 GIT_PAGER=cat bash deploy/release-vps.sh SHA_COMMIT_LENGKAP
 ```
 
-Skrip mencadangkan database SQLite dan aset web, memperbarui backend, memasang aset, lalu memeriksa HTTPS dan discovery OAuth. Jika langkah rilis gagal, skrip memulihkan kode dan aset sebelumnya. Cadangan database tetap tersedia untuk pemulihan yang ditinjau secara terpisah. Jika checkout lama belum memuat skrip, ambil skrip dari commit rilis sebelum menjalankannya dari direktori checkout.
+Skrip mencadangkan basis data SQLite dan aset web, memperbarui backend, memasang aset, lalu memeriksa HTTPS dan metadata OAuth. Jika rilis gagal, skrip memulihkan kode dan aset ke versi sebelumnya. Pemulihan basis data dilakukan secara terpisah dari cadangan.
 
 Periksa `/health` untuk status proses dan cache katalog. Untuk memastikan layanan eksternal, lakukan pencarian portal atau uji operasi BPS dengan akun uji. `/health` sendiri mengukur kesiapan proses.
 
 ## Email akun
 
-Konfigurasikan `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, dan `SMTP_FROM` pada layanan Python. Gunakan `SMTP_PASSWORD` atau `SMTP_PASSWORD_FILE` untuk rahasia SMTP. Jika keduanya disetel, berkas diprioritaskan. Beri izin baca kepada akun layanan saja. Pada Docker, mount berkas dan gunakan path di dalam container.
+Konfigurasikan `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, dan `SMTP_FROM` pada layanan Python. Gunakan `SMTP_PASSWORD` atau `SMTP_PASSWORD_FILE` untuk kredensial SMTP. Jika keduanya ditetapkan, layanan memprioritaskan berkas. Berikan izin baca hanya kepada akun layanan. Pada Docker, pasang berkas sebagai volume dan gunakan lokasinya di dalam kontainer.
 
 Port 465 memakai TLS langsung dan port 587 memakai STARTTLS wajib. Untuk Gmail, gunakan sandi aplikasi. Pilih alamat pengirim yang diizinkan penyedia dan setel `SMTP_DAILY_LIMIT` untuk batas pengiriman aplikasi.
 
@@ -60,7 +60,5 @@ Jika verifikasi gagal dikirim, pengguna dapat memakai **Kirim ulang verifikasi**
 
 ## Cadangan dan rotasi
 
-- Cadangkan SQLite dengan API backup atau saat layanan berhenti. Cadangkan master key secara terpisah dan batasi akses ke keduanya.
-- Rotasi master key saat trafik dan gateway berhenti. Cadangkan database dan key lama, lalu jalankan [skrip rotasi](../scripts/rotate_account_key.py) dengan `ACCOUNTS_DB_PATH`, `ACCOUNTS_ENCRYPTION_KEY` lama, dan `ACCOUNTS_NEW_ENCRYPTION_KEY` baru. Perbarui secret aplikasi sebelum memulai layanan. Rotasi membatalkan sesi browser.
-- Untuk database lama yang belum memakai verifikasi email, migrasi mengharuskan pengguna memverifikasi akun kembali. Cadangkan database dan pertahankan master key sebelum migrasi.
-- Jika gateway Worker masih digunakan, ikuti [panduan pemisahan dan sinkronisasi Worker](pemisahan-worker.md).
+- Cadangkan SQLite dengan API pencadangan atau saat layanan berhenti. Simpan cadangan kunci enkripsi secara terpisah dan batasi akses ke keduanya.
+- Lakukan rotasi kunci saat layanan berhenti. Cadangkan basis data dan kunci yang sedang digunakan, lalu jalankan [skrip rotasi](../scripts/rotate_account_key.py) dengan `ACCOUNTS_DB_PATH`, `ACCOUNTS_ENCRYPTION_KEY` lama, dan `ACCOUNTS_NEW_ENCRYPTION_KEY` baru. Perbarui kunci pada konfigurasi sebelum memulai layanan. Rotasi membatalkan sesi peramban.
