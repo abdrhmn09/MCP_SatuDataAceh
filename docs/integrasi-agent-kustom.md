@@ -5,8 +5,8 @@ MCP Satu Data Aceh dapat digunakan sebagai sumber data publik untuk bot RAG dan 
 ## Penyiapan akses
 
 1. Daftarkan akun dengan email yang dapat dikelola tim penanggung jawab bot, lalu verifikasi email. Untuk produksi, gunakan akun yang dikelola instansi atau tim. Pisahkan akun jika aplikasi harus memakai kredensial BPS yang berbeda.
-2. Jika aplikasi memerlukan statistik BPS, simpan kunci Web API BPS melalui menu **API key**. Penelusuran Portal Satu Data Aceh dapat dilakukan dengan token MCP. Gunakan token SDGs Access khusus untuk operasi SDGs Access.
-3. Buka **Aplikasi terhubung → Token manual**. Beri nama token sesuai aplikasi dan lingkungan, misalnya `bot-pelayanan-produksi`. Simpan token di penyimpanan rahasia backend. Gunakan token terpisah untuk setiap aplikasi dan lingkungan agar akses dapat dicabut secara independen.
+2. Jika aplikasi memerlukan statistik BPS, simpan kunci Web API BPS melalui menu **Kunci BPS**. Penelusuran Portal Satu Data Aceh dapat dilakukan dengan token MCP. Gunakan token SDGs Access khusus untuk operasi SDGs Access.
+3. Buka **Token akses**. Beri nama token sesuai aplikasi dan lingkungan, misalnya `bot-pelayanan-produksi`. Simpan token di penyimpanan rahasia backend. Gunakan token terpisah untuk setiap aplikasi dan lingkungan agar akses dapat dicabut secara independen.
 
 Server memakai token untuk mengenali akun dan mengambil kredensial BPS yang tersimpan. Token berbeda dari akun yang sama tetap memakai kredensial akun tersebut. Gunakan akun terpisah bila perlu mengisolasi kredensial antarinstansi atau antara pengembangan dan produksi.
 

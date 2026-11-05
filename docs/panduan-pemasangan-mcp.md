@@ -14,7 +14,7 @@ Gunakan **server jarak jauh dengan OAuth** untuk menghubungkan aplikasi AI ke la
 
 ## Server jarak jauh dengan OAuth
 
-Gunakan URL **`https://www.mcpsatudataaceh.web.id/mcp`**. Buat akun di situs MCP dan verifikasi email. Untuk mengakses data BPS, simpan kunci Web API BPS melalui menu **API key**. Penelusuran Portal Satu Data Aceh tidak memerlukan kunci BPS. Periksa nama aplikasi dan alamat callback pada halaman persetujuan, lalu izinkan akses. Kelola izin melalui **Aplikasi terhubung**.
+Gunakan URL **`https://www.mcpsatudataaceh.web.id/mcp`**. Buat akun di situs MCP dan verifikasi email. Untuk mengakses data BPS, simpan kunci Web API BPS melalui menu **Kunci BPS**. Penelusuran Portal Satu Data Aceh tidak memerlukan kunci BPS. Periksa nama aplikasi dan alamat callback pada halaman persetujuan, lalu izinkan akses. Kelola izin melalui **Aplikasi terhubung**.
 
 ### ChatGPT Web
 
@@ -46,7 +46,7 @@ Di Antigravity IDE, buka menu panel agent **… → MCP Servers → Manage MCP S
 }
 ```
 
-Pilih **Authenticate** jika tersedia, lalu masuk dan setujui akses. Jika klien menggunakan autentikasi manual, buat token melalui **Aplikasi terhubung → Token manual** dan tambahkan `"headers": {"Authorization": "Bearer TOKEN_MCP_ANDA"}` pada entri server. Ganti nilai contoh dengan token akun Anda. Simpan konfigurasi yang memuat token di luar repositori.
+Pilih **Authenticate** jika tersedia, lalu masuk dan setujui akses. Jika klien menggunakan autentikasi manual, buat token melalui **Token akses** dan tambahkan `"headers": {"Authorization": "Bearer TOKEN_MCP_ANDA"}` pada entri server. Ganti nilai contoh dengan token akun Anda. Simpan konfigurasi yang memuat token di luar repositori.
 
 Rujukan [Google Antigravity – MCP](https://antigravity.google/docs/mcp).
 
@@ -85,7 +85,7 @@ Tambahkan entri berikut ke bagian `mcp` di `opencode.json`.
 
 Jalankan `opencode mcp auth satu-data-aceh` dan setujui akses di peramban. Periksa status dengan `opencode mcp list`.
 
-Untuk autentikasi manual, buat token MCP melalui **Aplikasi terhubung**. Pada entri OpenCode, gunakan `"oauth": false` dan `"headers": { "Authorization": "Bearer {env:SDA_MCP_TOKEN}" }`. Tetapkan token pada variabel lingkungan `SDA_MCP_TOKEN` saat menjalankan OpenCode.
+Untuk autentikasi manual, buat token MCP melalui **Token akses**. Pada entri OpenCode, gunakan `"oauth": false` dan `"headers": { "Authorization": "Bearer {env:SDA_MCP_TOKEN}" }`. Tetapkan token pada variabel lingkungan `SDA_MCP_TOKEN` saat menjalankan OpenCode.
 
 Rujukan [dokumentasi MCP OpenCode](https://opencode.ai/docs/mcp-servers/#oauth).
 

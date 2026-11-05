@@ -15,14 +15,14 @@ MCP Satu Data Aceh menyediakan akses baca ke katalog **Portal Satu Data Aceh** d
 ## Mulai menggunakan
 
 1. [Buat akun](https://www.mcpsatudataaceh.web.id/#register), verifikasi email, lalu masuk.
-2. Untuk mengakses statistik BPS, simpan kunci dari [Web API BPS](https://webapi.bps.go.id/documentation/) melalui menu **API key**. Katalog Portal Satu Data Aceh dapat digunakan setelah akun terverifikasi.
+2. Untuk mengakses statistik BPS, simpan kunci dari [Web API BPS](https://webapi.bps.go.id/documentation/) melalui menu **Kunci BPS**. Katalog Portal Satu Data Aceh dapat digunakan setelah akun terverifikasi.
 3. Di aplikasi AI, tambahkan endpoint `https://www.mcpsatudataaceh.web.id/mcp` sebagai server **Streamable HTTP**. Pilih **OAuth**, lalu masuk dan setujui akses.
 
 Untuk memeriksa koneksi, minta asisten mencari dataset inflasi Aceh dan menyertakan tautan sumber. Pulihkan akses akun melalui [Lupa sandi](https://www.mcpsatudataaceh.web.id/#forgot-password) dan kelola izin melalui [Aplikasi terhubung](https://www.mcpsatudataaceh.web.id/#apps).
 
 ## Integrasi aplikasi
 
-Backend aplikasi dapat menggunakan endpoint yang sama dengan header `Authorization: Bearer <TOKEN_MCP>`. Buat token melalui **Aplikasi terhubung → Token manual** dan simpan di penyimpanan rahasia backend.
+Backend aplikasi dapat menggunakan endpoint yang sama dengan header `Authorization: Bearer <TOKEN_MCP>`. Buat token melalui **Token akses** dan simpan di penyimpanan rahasia backend.
 
 - Portal Satu Data Aceh memakai `search` untuk menemukan dataset dan `fetch` untuk membuka hasil berdasarkan ID.
 - Web API BPS memakai `bps_endpoints` untuk melihat operasi dan parameter, lalu `bps_request` untuk mengambil data.

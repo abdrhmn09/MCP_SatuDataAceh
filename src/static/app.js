@@ -48,54 +48,106 @@ const date = seconds => new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', 
 function hasKey(service = 'bps') { return state.profile?.credentials?.find(item => item.service === service); }
 function updateAccount() {
   const data = state.profile;
-  $('navAccount').textContent = data ? 'Akun saya' : 'Masuk / daftar'; $('navAccount').href = data ? '#dashboard' : '#login';
+  $('navAccount').hidden = Boolean(data);
+  $('navDashboard').hidden = !data;
+  $('profileMenu').hidden = !data;
   $('explorerLoginNotice').hidden = Boolean(data);
   if (!data) {
+    $('profileMenu').open = false;
+    $('profileInitial').textContent = '';
+    $('profileMenuEmail').textContent = '';
+    $('tokenList').replaceChildren();
+    $('appList').replaceChildren();
     bpsDiagnostic?.abort();
     $('bpsDiagnostic').hidden = true;
     return;
   }
-  $('sidebarEmail').textContent = data.user.email; $('profileEmail').textContent = data.user.email;
-  const completed = 1 + Number(Boolean(hasKey())) + Number(data.tokens.length > 0 || data.apps?.length > 0);
-  $('setupCount').textContent = completed + ' dari 3 selesai'; $('setupProgress').style.width = (completed / 3 * 100) + '%';
-  $('setupKeyText').textContent = hasKey() ? 'API key BPS sudah tersimpan terenkripsi.' : 'Diperlukan agar server dapat mengambil data BPS untuk Anda.';
-  $('setupTokenText').textContent = data.apps?.length ? data.apps.length + ' aplikasi terhubung melalui OAuth.' : data.tokens.length ? data.tokens.length + ' token manual aktif.' : 'Hubungkan aplikasi dengan OAuth atau buat token manual.';
-  updateKey(); renderTokens();
+  $('profileInitial').textContent = data.user.email.slice(0, 1).toUpperCase();
+  $('profileMenuEmail').textContent = data.user.email;
+  $('overviewKey').textContent = hasKey() ? 'Tersimpan' : 'Belum disimpan';
+  $('overviewApps').textContent = data.apps?.length || 0;
+  $('overviewTokens').textContent = data.tokens.length;
+  const connected = data.tokens.length > 0 || data.apps?.length > 0;
+  $('connectionSetup').hidden = connected;
+  updateKey();
+  renderTokens();
 }
 function updateKey() {
   const service = $('keyService').value, saved = hasKey(service);
   $('keyServiceTitle').textContent = service === 'bps' ? 'Web API BPS' : 'SDGs Access';
-  $('keyBadge').textContent = saved ? 'Tersimpan terenkripsi' : 'Belum disimpan'; $('keyBadge').className = 'badge' + (saved ? '' : ' muted');
-  $('keyState').textContent = saved ? 'Terakhir diperbarui ' + date(saved.updated) + '. Nilai key tidak ditampilkan kembali.' : 'Belum ada key untuk layanan ini.';
-  $('keyInputLabel').textContent = saved ? 'API key pengganti' : 'API key baru';
-  $('saveKey').textContent = saved ? 'Simpan pengganti' : 'Simpan API key';
-  $('testKey').disabled = Boolean(bpsDiagnostic) || !(hasKey() || hasKey('sdgs')); $('deleteKey').disabled = !saved;
+  $('keyBadge').textContent = saved ? 'Tersimpan' : 'Belum disimpan';
+  $('keyBadge').className = 'badge' + (saved ? '' : ' muted');
+  $('keyState').textContent = saved ? 'Diperbarui ' + date(saved.updated) + '. Nilai kunci hanya tersedia saat dimasukkan.' : 'Tambahkan kunci untuk mengakses layanan ini.';
+  $('keyInputLabel').textContent = saved ? 'Kunci API pengganti' : 'Kunci API';
+  $('saveKey').textContent = saved ? 'Perbarui kunci' : 'Simpan kunci';
+  $('testKey').disabled = Boolean(bpsDiagnostic) || !(hasKey() || hasKey('sdgs'));
+  $('deleteKey').disabled = !saved;
+}
+function renderAccessTable(id, headings, rows, emptyText) {
+  const target = $(id);
+  if (!rows.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = emptyText;
+    target.replaceChildren(empty);
+    return;
+  }
+  const table = document.createElement('table');
+  table.className = 'access-table';
+  table.setAttribute('aria-label', id === 'tokenList' ? 'Token akses aktif' : 'Aplikasi OAuth aktif');
+  const header = table.createTHead().insertRow();
+  for (const heading of headings) {
+    const cell = document.createElement('th');
+    cell.scope = 'col'; cell.textContent = heading; header.append(cell);
+  }
+  const body = table.createTBody();
+  for (const values of rows) {
+    const row = body.insertRow();
+    values.forEach((value, index) => {
+      const cell = row.insertCell();
+      cell.dataset.label = headings[index];
+      cell.append(value);
+    });
+  }
+  target.replaceChildren(table);
+}
+function revokeButton(label, action) {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'danger'; button.textContent = 'Cabut akses';
+  button.setAttribute('aria-label', 'Cabut akses ' + label);
+  button.addEventListener('click', async () => {
+    if (button.dataset.confirm !== 'yes') {
+      button.dataset.confirm = 'yes'; button.textContent = 'Konfirmasi';
+      setTimeout(() => { if (button.isConnected) { button.dataset.confirm = ''; button.textContent = 'Cabut akses'; } }, 6000);
+      return;
+    }
+    button.disabled = true;
+    try { await action(); }
+    catch (error) { message('dashboardError', error.message); button.disabled = false; }
+  });
+  return button;
 }
 function renderTokens() {
-  const tokens = state.profile?.tokens || []; $('tokenCount').textContent = tokens.length + ' token';
+  const tokens = state.profile?.tokens || [];
+  $('tokenCount').textContent = tokens.length + ' token aktif';
   const rows = tokens.map(token => {
-    const row = document.createElement('div'); row.className = 'token-row';
-    const body = document.createElement('div'); body.className = 'body';
-    const title = document.createElement('strong'); title.textContent = token.label;
-    const info = document.createElement('p'); info.textContent = 'Berakhir ' + date(token.expires);
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'danger'; button.textContent = 'Cabut'; button.setAttribute('aria-label', 'Cabut token ' + token.label);
-    button.addEventListener('click', async () => {
-      if (button.dataset.confirm !== 'yes') { button.dataset.confirm = 'yes'; button.textContent = 'Konfirmasi cabut'; setTimeout(() => { if (button.isConnected) { button.dataset.confirm = ''; button.textContent = 'Cabut'; } }, 6000); return; }
-      button.disabled = true;
-      try { await account('tokens', { revoke: token.id }); await refreshAccount(); toast('Token dicabut. Klien tersebut tidak dapat mengakses MCP lagi.'); }
-      catch (error) { message('dashboardError', error.message); button.disabled = false; }
+    const name = document.createElement('strong'); name.textContent = token.label;
+    const button = revokeButton(token.label, async () => {
+      await account('tokens', { revoke: token.id });
+      await refreshAccount();
+      toast('Akses token dicabut.');
     });
-    body.append(title, info); row.append(body, button); return row;
+    return [name, date(token.created), date(token.expires), button];
   });
-  if (!rows.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'Belum ada token aktif. Buat token pertama untuk menghubungkan klien AI Anda.'; rows.push(empty); }
-  $('tokenList').replaceChildren(...rows);
+  renderAccessTable('tokenList', ['Nama token', 'Dibuat', 'Berakhir', 'Tindakan'], rows,
+    'Belum ada token akses. Buat token untuk menghubungkan bot atau aplikasi backend.');
 }
 function setAuthMode(mode) {
   state.authMode = mode;
   const copy = {
-    login: ['Selamat datang kembali.', 'Masuk untuk mengelola koneksi data Anda.', 'Masuk ke akun'],
-    register: ['Mulai dari akun Anda.', 'Daftar, verifikasi email, lalu siapkan koneksi BPS.', 'Daftar dan kirim verifikasi'],
-    resend: ['Belum menerima email?', 'Gunakan email dan sandi akun Anda untuk meminta tautan verifikasi baru.', 'Kirim ulang email verifikasi']
+    login: ['Masuk', 'Kelola kunci BPS dan koneksi aplikasi Anda.', 'Masuk'],
+    register: ['Buat akun', 'Gunakan email yang dapat Anda akses untuk verifikasi akun.', 'Buat akun'],
+    resend: ['Kirim ulang verifikasi', 'Gunakan email dan sandi akun Anda untuk meminta tautan verifikasi baru.', 'Kirim ulang email verifikasi']
   }[mode];
   $('authTitle').textContent = copy[0]; $('authIntro').textContent = copy[1]; $('authSubmit').textContent = copy[2];
   $('confirmGroup').hidden = mode !== 'register'; $('passwordConfirm').required = !$('confirmGroup').hidden;
@@ -126,15 +178,22 @@ function route() {
   let page = location.hash.slice(1) || (state.profile ? 'dashboard' : 'home');
   if (page === 'recover') { history.replaceState(null, '', '#forgot-password'); page = 'forgot-password'; }
   if (!['home', 'explore', 'guide', 'wait', 'verify', 'secret', 'oauth', 'forgot-password', 'reset-password', 'delete-confirm', ...authPages, ...protectedPages].includes(page)) page = 'home';
-  if (protectedPages.has(page) && !state.profile) { history.replaceState(null, '', '#login'); page = 'login'; }
+  if (protectedPages.has(page) && !state.profile) { state.returnPage = page; history.replaceState(null, '', '#login'); page = 'login'; }
   if (authPages.has(page) && state.profile) { history.replaceState(null, '', '#dashboard'); page = 'dashboard'; }
   if (page === 'secret' && !state.secret) { page = state.profile ? 'tokens' : 'login'; history.replaceState(null, '', '#' + page); }
   const view = authPages.has(page) ? 'auth' : protectedPages.has(page) ? 'dashboard' : page;
-  const panel = page === 'tokens' ? 'apps' : page;
+  const panel = page;
+  closeNavigation();
+  document.querySelectorAll('[data-nav]').forEach(link => {
+    const current = link.dataset.nav === (protectedPages.has(page) ? 'dashboard' : page);
+    if (current) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
   document.querySelectorAll('main > section').forEach(el => { el.hidden = el.id !== 'view-' + view; });
   $('initialLoading').hidden = true;
   if (authPages.has(page)) setAuthMode(page);
   if (protectedPages.has(page)) {
+    message('dashboardError', '');
     document.querySelectorAll('[data-dashboard-panel]').forEach(el => { el.hidden = el.id !== 'panel-' + panel; });
     document.querySelectorAll('[data-panel]').forEach(el => el.setAttribute('aria-current', el.dataset.panel === panel ? 'page' : 'false'));
   }
@@ -157,22 +216,51 @@ function route() {
   }
   if (page === 'explore') $('explorerLoginNotice').hidden = Boolean(state.profile);
   if (page === 'oauth') loadConsent();
-  if (panel === 'apps') {
-    if (page === 'tokens') $('manualTokens').open = true;
-    loadApps();
-  }
+  if (page === 'apps') loadApps();
   if (page === 'security') loadSessions();
-  const heading = document.querySelector(protectedPages.has(page) ? '#panel-' + panel + ' h2' : '#view-' + view + ' :is(h1,h2):not(.auth-context h2)');
+  const heading = document.querySelector(protectedPages.has(page) ? '#panel-' + panel + ' h2' : '#view-' + view + ' :is(h1,h2)');
   if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
   window.scrollTo({ top: 0, behavior: 'instant' });
   const titles = {
-    home: 'Akses data publik Aceh', explore: 'Jelajahi data', guide: 'Panduan koneksi',
+    home: 'Akses data publik Aceh', explore: 'Penjelajah BPS', guide: 'Panduan koneksi',
+    dashboard: 'Ringkasan', keys: 'Kunci BPS', apps: 'Aplikasi terhubung', tokens: 'Token akses', connection: 'Koneksi MCP',
     login: 'Masuk', register: 'Daftar', resend: 'Kirim ulang verifikasi',
     'forgot-password': 'Lupa sandi', 'reset-password': 'Atur ulang sandi',
     'delete-confirm': 'Konfirmasi penghapusan akun', security: 'Keamanan akun'
   };
-  document.title = (titles[page] || (protectedPages.has(page) ? 'Dashboard' : 'MCP')) + ' · MCP Satu Data Aceh';
+  document.title = (titles[page] || (protectedPages.has(page) ? 'Dasbor' : 'MCP')) + ' · MCP Satu Data Aceh';
 }
+function closeNavigation() {
+  $('primaryNav').classList.remove('is-open');
+  $('navToggle').setAttribute('aria-expanded', 'false');
+  $('profileMenu').open = false;
+}
+$('navToggle').addEventListener('click', () => {
+  const open = $('navToggle').getAttribute('aria-expanded') !== 'true';
+  $('navToggle').setAttribute('aria-expanded', String(open));
+  $('primaryNav').classList.toggle('is-open', open);
+  $('profileMenu').open = false;
+});
+$('profileMenu').addEventListener('toggle', () => {
+  if ($('profileMenu').open) {
+    $('primaryNav').classList.remove('is-open');
+    $('navToggle').setAttribute('aria-expanded', 'false');
+  }
+});
+document.querySelector('.skip-link').addEventListener('click', event => {
+  event.preventDefault(); $('mainContent').focus();
+});
+document.addEventListener('click', event => {
+  if (!event.target.closest('.header-actions')) closeNavigation();
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const profileOpen = $('profileMenu').open;
+  const navigationOpen = $('navToggle').getAttribute('aria-expanded') === 'true';
+  closeNavigation();
+  if (profileOpen) $('profileMenu').querySelector('summary').focus();
+  else if (navigationOpen) $('navToggle').focus();
+});
 function showSecret(value) {
   state.secret = value; state.secretNext = 'tokens';
   $('oneTimeSecret').textContent = value;
@@ -180,7 +268,7 @@ function showSecret(value) {
 }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast(label + ' disalin.'); } catch { toast('Clipboard tidak tersedia. Pilih dan salin teks secara manual.'); } }
 $('secretSaved').addEventListener('change', () => { $('secretContinue').disabled = !$('secretSaved').checked; });
-$('copySecret').addEventListener('click', () => copy(state.secret, 'Credential'));
+$('copySecret').addEventListener('click', () => copy(state.secret, 'Token akses'));
 $('secretContinue').addEventListener('click', () => { if (!$('secretSaved').checked) return; state.secret = ''; $('oneTimeSecret').textContent = ''; location.hash = state.secretNext; });
 $('authForm').addEventListener('submit', async event => {
   event.preventDefault(); message('authError', '');
@@ -190,7 +278,7 @@ $('authForm').addEventListener('submit', async event => {
     try {
       const data = await account(mode, { email: state.email, password: $('password').value });
       $('password').value = ''; $('passwordConfirm').value = '';
-      if (mode === 'login') { await refreshAccount(); location.hash = state.oauth ? 'oauth' : 'dashboard'; toast('Berhasil masuk. Selamat datang kembali.'); }
+      if (mode === 'login') { await refreshAccount(); location.hash = state.oauth ? 'oauth' : (state.returnPage || 'dashboard'); state.returnPage = ''; toast('Berhasil masuk.'); }
       else if (mode === 'register') {
         $('waitEmail').textContent = state.email; $('waitMessage').textContent = data.verification_sent ? 'Email telah diterima layanan pengirim. Periksa inbox dan spam.' : 'Akun berhasil dibuat, tetapi email belum dapat dikirim. Tunggu satu menit lalu gunakan Kirim ulang.';
         location.hash = 'wait';
@@ -378,13 +466,13 @@ $('testKey').addEventListener('click', async () => {
 $('deleteKey').addEventListener('click', () => { $('deleteKeyConfirm').hidden = false; });
 $('cancelDeleteKey').addEventListener('click', () => { $('deleteKeyConfirm').hidden = true; });
 $('confirmDeleteKey').addEventListener('click', () => busy('confirmDeleteKey', 'Menghapus…', async () => {
-  try { await account('credentials', { service: $('keyService').value, delete: true }); $('savedKey').value = ''; $('deleteKeyConfirm').hidden = true; await refreshAccount(); message('keyFeedback', 'Key layanan ini telah dihapus.', ''); }
+  try { await account('credentials', { service: $('keyService').value, delete: true }); $('savedKey').value = ''; $('deleteKeyConfirm').hidden = true; await refreshAccount(); message('keyFeedback', 'Kunci layanan ini telah dihapus.', ''); }
   catch (error) { message('keyFeedback', error.message); }
 }));
 $('tokenForm').addEventListener('submit', async event => {
   event.preventDefault(); message('dashboardError', '');
   await busy('createToken', 'Membuat token…', async () => {
-    try { const data = await account('tokens', { label: $('tokenLabel').value.trim(), days: Number($('tokenDays').value) }); try { await refreshAccount(); } catch { /* Preserve the one-time token even if refreshing metadata fails. */ } showSecret(data.token); }
+    try { const data = await account('tokens', { label: $('tokenLabel').value.trim(), days: Number($('tokenDays').value) }); try { await refreshAccount(); } catch { /* Preserve the one-time token even if refreshing metadata fails. */ } $('tokenLabel').value = ''; $('manualTokens').open = false; showSecret(data.token); }
     catch (error) { message('dashboardError', error.message); }
   });
 });
@@ -392,7 +480,7 @@ async function logout() {
   try { await account('logout', {}); state.profile = null; state.csrf = ''; state.secret = ''; $('oneTimeSecret').textContent = ''; $('savedKey').value = ''; updateAccount(); location.hash = 'login'; toast('Anda sudah keluar. Token klien tetap berlaku sampai dicabut atau kedaluwarsa.'); }
   catch (error) { message('dashboardError', error.message); }
 }
-$('logout').addEventListener('click', logout); $('logoutSecondary').addEventListener('click', logout);
+$('logout').addEventListener('click', logout);
 $('passwordForm').addEventListener('submit', async event => {
   event.preventDefault();
   if ($('newPassword').value !== $('newPasswordConfirm').value) { message('dashboardError', 'Kedua sandi baru belum sama.'); return; }
@@ -442,24 +530,26 @@ $('oauthCancel').addEventListener('click', () => { state.oauth = ''; sessionStor
 async function loadApps() {
   try {
     const data = await account('apps', {});
-    if (state.profile) state.profile.apps = data.apps;
+    if (!state.profile) return;
+    state.profile.apps = data.apps;
+    updateAccount();
     const rows = data.apps.map(app => {
-      const row = document.createElement('div'); row.className = 'token-row';
-      const body = document.createElement('div'); body.className = 'body';
+      const name = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = app.name;
-      const info = document.createElement('p'); info.textContent = 'Callback: ' + new URL(app.redirect_uri).host + ' · Berakhir ' + date(app.expires);
-      const client = document.createElement('p'); client.textContent = 'ID: ' + app.client_id; client.style.overflowWrap = 'anywhere';
-      const button = document.createElement('button'); button.className = 'danger'; button.type = 'button'; button.textContent = 'Cabut akses'; button.setAttribute('aria-label', 'Cabut akses ' + app.name);
-      button.addEventListener('click', async () => {
-        if (button.dataset.confirm !== 'yes') { button.dataset.confirm = 'yes'; button.textContent = 'Konfirmasi cabut'; setTimeout(() => { if (button.isConnected) { button.dataset.confirm = ''; button.textContent = 'Cabut akses'; } }, 6000); return; }
-        button.disabled = true;
-        try { await account('apps', { revoke: app.id }); await refreshAccount(); await loadApps(); toast('Akses aplikasi dicabut.'); }
-        catch (error) { message('dashboardError', error.message); button.disabled = false; }
+      const host = document.createElement('p'); host.className = 'hint'; host.textContent = new URL(app.redirect_uri).host;
+      const identity = document.createElement('details'); identity.className = 'application-identity';
+      const summary = document.createElement('summary'); summary.textContent = 'Identitas aplikasi';
+      const identifier = document.createElement('code'); identifier.textContent = app.client_id;
+      identity.append(summary, identifier); name.append(title, host, identity);
+      const button = revokeButton(app.name, async () => {
+        await account('apps', { revoke: app.id });
+        await refreshAccount(); await loadApps();
+        toast('Akses aplikasi dicabut.');
       });
-      body.append(title, info, client); row.append(body, button); return row;
+      return [name, date(app.created), date(app.expires), button];
     });
-    if (!rows.length) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Belum ada aplikasi terhubung. Mulai koneksi OAuth dari aplikasi AI Anda.'; rows.push(empty); }
-    $('appList').replaceChildren(...rows);
+    renderAccessTable('appList', ['Aplikasi', 'Terhubung', 'Berakhir', 'Tindakan'], rows,
+      'Belum ada aplikasi terhubung. Mulai koneksi melalui pengaturan MCP aplikasi AI Anda.');
   } catch (error) { message('dashboardError', error.message); }
 }
 $('refreshApps').addEventListener('click', () => busy('refreshApps', 'Memperbarui…', loadApps));

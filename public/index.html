@@ -6,12 +6,35 @@
 <meta name="referrer" content="no-referrer">
 <title>MCP Satu Data Aceh — Akses data publik Aceh</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">
-<link rel="stylesheet" href="/styles.css?v=10">
-<script src="/app.js?v=10" defer></script>
+<link rel="stylesheet" href="/styles.css?v=11">
+<script src="/app.js?v=11" defer></script>
 </head>
 <body>
-<header><div class="bar"><a class="brand" href="#home"><img src="/logo.svg?v=1" width="638" height="164" alt="MCP Satu Data Aceh"></a><nav aria-label="Navigasi utama"><a href="#explore">Jelajahi data</a><a href="#guide">Panduan koneksi</a><a id="navAccount" class="button" href="#login">Masuk / daftar</a></nav></div></header>
-<main>
+<a class="skip-link" href="#mainContent">Lewati ke konten</a>
+<header>
+  <div class="bar">
+    <a class="brand" href="#home"><img src="/logo.svg?v=1" width="638" height="164" alt="MCP Satu Data Aceh"></a>
+    <div class="header-actions">
+      <button id="navToggle" class="secondary nav-toggle" type="button" aria-expanded="false" aria-controls="primaryNav">Menu</button>
+      <nav id="primaryNav" aria-label="Navigasi utama">
+        <a href="#explore" data-nav="explore">Jelajahi data</a>
+        <a href="#guide" data-nav="guide">Panduan</a>
+        <a id="navDashboard" href="#dashboard" data-nav="dashboard" hidden>Dasbor</a>
+        <a id="navAccount" class="button" href="#login">Masuk</a>
+      </nav>
+      <details id="profileMenu" class="profile-menu" hidden>
+        <summary aria-label="Menu profil"><span id="profileInitial" class="avatar" aria-hidden="true"></span><span class="profile-caption">Profil</span><span aria-hidden="true">⌄</span></summary>
+        <div class="profile-popover">
+          <span class="menu-label">Masuk sebagai</span>
+          <strong id="profileMenuEmail"></strong>
+          <a href="#security">Keamanan akun</a>
+          <button id="logout" type="button" class="text-button">Keluar</button>
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+<main id="mainContent" tabindex="-1">
 <div id="initialLoading" class="loading" role="status">Memuat MCP Satu Data Aceh…</div>
 <section id="view-home" class="wrap home" hidden>
   <div class="home-intro">
@@ -25,7 +48,7 @@
       </div>
     </div>
     <figure class="query-example">
-      <figcaption>Contoh pertanyaan</figcaption>
+      <figcaption>Ilustrasi pertanyaan</figcaption>
       <blockquote>Berapa jumlah penduduk Kota Banda Aceh pada 2024? Sertakan satuan dan tautan sumbernya.</blockquote>
       <dl>
         <div><dt>Sumber</dt><dd>Web API BPS</dd></div>
@@ -38,7 +61,7 @@
     <div><p class="eyebrow">Rujukan</p><h2>Dua sumber data</h2></div>
     <div class="source-list">
       <article><h3>Portal Satu Data Aceh</h3><p>Telusuri katalog dataset publik dan baca berkas CSV dengan rujukan ke distribusi aslinya.</p></article>
-      <article><h3>Web API BPS</h3><p>Telusuri metadata, publikasi, dan data statistik. Simpan API key BPS milik Anda untuk menjalankan permintaan.</p></article>
+      <article><h3>Web API BPS</h3><p>Telusuri metadata, publikasi, dan data statistik. Simpan kunci BPS milik Anda untuk menjalankan permintaan.</p></article>
     </div>
   </div>
   <div class="home-section">
@@ -46,14 +69,29 @@
     <div>
       <ol class="home-steps">
         <li>Buat akun dan verifikasi email.</li>
-        <li>Simpan API key jika ingin mengakses Web API BPS.</li>
+        <li>Simpan kunci jika ingin mengakses Web API BPS.</li>
         <li>Tambahkan server MCP di aplikasi AI, lalu masuk dan setujui akses melalui OAuth.</li>
       </ol>
       <a href="#register">Buat akun</a>
     </div>
   </div>
 </section>
-<section id="view-auth" class="auth-wrap" hidden><aside class="auth-context"><p class="eyebrow">MCP Satu Data Aceh</p><h2>Siapkan akses MCP</h2><p class="small">Mulai dengan akun Anda. API key BPS dan token MCP dikelola setelah email terverifikasi.</p><ol class="journey"><li><span class="step-number">1</span><div><strong>Buat akun</strong><span>Gunakan email yang dapat Anda akses.</span></div></li><li><span class="step-number">2</span><div><strong>Verifikasi email</strong><span>Buka tautan di inbox dan konfirmasikan.</span></div></li><li><span class="step-number">3</span><div><strong>Hubungkan data</strong><span>Simpan API key BPS dan hubungkan aplikasi AI.</span></div></li></ol></aside><div class="auth-card"><nav class="auth-tabs" aria-label="Pilih autentikasi"><a id="tab-login" href="#login">Masuk</a><a id="tab-register" href="#register">Daftar</a></nav><h2 id="authTitle">Selamat datang kembali.</h2><p id="authIntro" class="intro">Masuk untuk mengelola koneksi data Anda.</p><div id="authError" class="message error" role="alert" hidden></div><form id="authForm"><label for="email">Email</label><input id="email" type="email" autocomplete="username" maxlength="254" placeholder="nama@email.com" required><label for="password">Sandi</label><div class="password-wrap"><input id="password" type="password" autocomplete="current-password" required><button type="button" data-toggle="password" aria-label="Tampilkan sandi">Lihat</button></div><div id="confirmGroup" hidden><label for="passwordConfirm">Ulangi sandi</label><div class="password-wrap"><input id="passwordConfirm" type="password" autocomplete="new-password"><button type="button" data-toggle="passwordConfirm" aria-label="Tampilkan konfirmasi sandi">Lihat</button></div></div><button class="full" id="authSubmit" style="margin-top:24px" type="submit">Masuk ke akun</button></form><div class="auth-links"><a href="#forgot-password">Lupa sandi?</a><a href="#resend">Kirim ulang verifikasi</a></div><hr class="divider"><p class="hint">Proyek independen untuk data publik. Bukan situs resmi BPS.</p></div></section>
+<section id="view-auth" class="auth-wrap" hidden>
+  <div class="auth-card">
+    <nav class="auth-tabs" aria-label="Akses akun"><a id="tab-login" href="#login">Masuk</a><a id="tab-register" href="#register">Buat akun</a></nav>
+    <h2 id="authTitle">Masuk</h2>
+    <p id="authIntro" class="intro">Kelola kunci BPS dan koneksi aplikasi Anda.</p>
+    <div id="authError" class="message error" role="alert" hidden></div>
+    <form id="authForm">
+      <label for="email">Email</label><input id="email" type="email" autocomplete="username" maxlength="254" placeholder="nama@instansi.go.id" required>
+      <label for="password">Sandi</label>
+      <div class="password-wrap"><input id="password" type="password" autocomplete="current-password" required><button type="button" data-toggle="password" aria-label="Tampilkan sandi">Lihat</button></div>
+      <div id="confirmGroup" hidden><label for="passwordConfirm">Ulangi sandi</label><div class="password-wrap"><input id="passwordConfirm" type="password" autocomplete="new-password"><button type="button" data-toggle="passwordConfirm" aria-label="Tampilkan konfirmasi sandi">Lihat</button></div></div>
+      <button class="full" id="authSubmit" type="submit">Masuk</button>
+    </form>
+    <div class="auth-links"><a href="#forgot-password">Lupa sandi?</a><a href="#resend">Kirim ulang verifikasi</a></div>
+  </div>
+</section>
 <section id="view-forgot-password" class="center-card" hidden>
   <h2>Lupa sandi</h2>
   <p>Masukkan email yang Anda gunakan untuk akun ini.</p>
@@ -88,13 +126,36 @@
     <a href="#home">Batal</a>
   </div>
 </section>
-<section id="view-wait" class="center-card" hidden><div class="round-icon">✉</div><p class="eyebrow">Verifikasi email</p><h2>Periksa inbox Anda.</h2><p>Email verifikasi ditujukan ke <strong id="waitEmail">alamat email akun Anda</strong>. Buka tautannya, lalu tekan <strong>Verifikasi email</strong>.</p><div id="waitMessage" class="message info"></div><p class="small">Tautan berlaku 1 jam. Periksa folder spam jika belum terlihat.</p><div class="actions"><a class="button" href="#login">Kembali ke halaman masuk</a><a href="#resend">Kirim ulang</a></div></section>
-<section id="view-verify" class="center-card" hidden><div class="round-icon">✓</div><p class="eyebrow">Konfirmasi akun</p><h2>Aktifkan email Anda.</h2><p>Tekan tombol berikut untuk mengonfirmasi tautan verifikasi dan melanjutkan ke halaman masuk.</p><div id="verifyMessage" class="message error" role="alert" hidden></div><button id="verifyEmail" type="button" class="full">Verifikasi email</button><div class="auth-links"><a href="#login">Masuk</a><a href="#resend">Minta tautan baru</a></div></section>
-<section id="view-oauth" class="center-card" hidden><div class="round-icon">⇄</div><p class="eyebrow">Persetujuan koneksi</p><h2>Hubungkan aplikasi AI.</h2><div id="oauthError" class="message error" role="alert" hidden></div><div id="oauthLogin" hidden><p>Masuk ke akun Anda untuk meninjau aplikasi dan izin yang diminta.</p><a class="button full" href="#login">Masuk untuk melanjutkan</a><p class="hint">Belum punya akun? <a href="#register">Daftar dan verifikasi email</a>, lalu kembali ke koneksi ini.</p></div><div id="oauthDetails" hidden><p><strong id="oauthName"></strong> meminta akses ke akun <strong id="oauthAccount"></strong>.</p><p class="hint">Nama aplikasi diberikan oleh klien. Periksa alamat callback sebelum memberi izin.</p><label>Identitas aplikasi</label><div id="oauthClient" class="endpoint"></div><label>Kembali ke aplikasi melalui</label><div id="oauthCallback" class="endpoint"></div><div class="message info"><strong>Izin: membaca data</strong><p>Mencari dataset Aceh dan mengambil data BPS menggunakan key tersimpan milik Anda. Sandi dan nilai API key tidak diberikan kepada aplikasi AI.</p></div><p class="hint">Akses berlaku hingga 30 hari dan dapat dicabut melalui Aplikasi terhubung. Akses BPS memerlukan API key yang sudah disimpan; <a href="#keys">kelola key Anda</a>.</p><div class="actions"><button id="oauthApprove" type="button">Izinkan akses</button><button id="oauthDeny" type="button" class="secondary">Tolak</button></div></div><p class="hint">Jika Anda tidak memulai koneksi ini, tutup halaman tanpa memberikan izin.</p><button id="oauthCancel" class="text-button" type="button">Kembali ke akun tanpa melanjutkan</button></section>
-<section id="view-secret" class="center-card" hidden><div class="round-icon">⌁</div><p class="eyebrow" id="secretEyebrow">Simpan dengan aman</p><h2 id="secretTitle">Token MCP Anda</h2><p id="secretIntro">Salin token ke pengaturan klien MCP. Token hanya ditampilkan sekali.</p><pre id="oneTimeSecret" class="secret" aria-label="Credential satu kali"></pre><button id="copySecret" class="secondary full" type="button">Salin token MCP</button><label class="checkbox"><input id="secretSaved" type="checkbox"><span>Saya sudah menyimpan kode ini di tempat yang aman.</span></label><button id="secretContinue" class="full" type="button" disabled>Lanjutkan</button></section>
-<section id="view-dashboard" class="dashboard" hidden><aside class="sidebar"><div class="sidebar-title">RUANG KERJA</div><a href="#dashboard" data-panel="dashboard">◫ Ringkasan</a><a href="#keys" data-panel="keys">⌁ API key</a><a href="#apps" data-panel="apps">◇ Aplikasi terhubung</a><a href="#connection" data-panel="connection">⇄ Hubungkan AI</a><a href="#security" data-panel="security">◎ Keamanan</a><div class="account-mini"><strong id="sidebarEmail"></strong><p class="hint">Email terverifikasi</p><button id="logout" type="button" class="text-button">Keluar dari akun</button></div></aside><div class="workspace"><div id="dashboardError" class="message error" role="alert" hidden></div>
-<div id="panel-dashboard" data-dashboard-panel hidden><p class="eyebrow">Akun Anda</p><h2>Siapkan koneksi data Anda.</h2><p class="subheading">Ikuti langkah berikut. API key BPS dan token MCP memiliki fungsi yang berbeda.</p><div class="card"><div class="key-card-head"><h3>Langkah persiapan</h3><span class="badge" id="setupCount">1 dari 3 selesai</span></div><div class="progress"><span id="setupProgress" style="width:33%"></span></div><div class="setup-row"><span class="step-number">✓</span><div class="body"><strong>Email terverifikasi</strong><p id="profileEmail"></p></div><span class="badge">Selesai</span></div><div class="setup-row"><span class="step-number">2</span><div class="body"><strong>Simpan API key BPS</strong><p id="setupKeyText">Diperlukan agar server dapat mengambil data BPS untuk Anda.</p></div><a class="button secondary" href="#keys">Kelola key</a></div><div class="setup-row"><span class="step-number">3</span><div class="body"><strong>Hubungkan aplikasi AI</strong><p id="setupTokenText">Gunakan OAuth di klien AI atau buat token manual.</p></div><a class="button secondary" href="#connection">Hubungkan AI</a></div></div><div class="columns" style="margin-top:20px"><article class="card"><h3>Ingin mencoba data dulu?</h3><p>Explorer menggunakan key yang tersimpan dalam akun Anda.</p><a href="#explore">Buka explorer BPS ↗</a></article><article class="card"><h3>Sudah memiliki token?</h3><p>Gunakan panduan untuk memilih endpoint dan memasang header.</p><a href="#connection">Panduan koneksi AI ↗</a></article></div></div>
-<div id="panel-keys" data-dashboard-panel hidden><p class="eyebrow">Credential sumber data</p><h2>API key BPS Anda.</h2><p class="subheading">Gunakan key dari akun Web API BPS. Ini berbeda dari sandi akun, sandi email, atau token MCP.</p><div class="card"><div class="key-card-head"><div><h3 id="keyServiceTitle">Web API BPS</h3><a class="small" href="https://webapi.bps.go.id/" target="_blank" rel="noopener noreferrer">Dapatkan API key dari BPS ↗</a></div><span class="badge muted" id="keyBadge">Belum disimpan</span></div><p class="key-state" id="keyState">Belum ada key untuk layanan ini.</p><div id="keyFeedback" class="message" role="status" hidden></div><form id="keyForm" class="key-form" autocomplete="off"><label for="keyService">Layanan</label><select id="keyService"><option value="bps">Web API BPS</option><option value="sdgs">SDGs Access (opsional)</option></select><label for="savedKey" id="keyInputLabel">API key baru</label><div class="password-wrap"><input id="savedKey" type="password" autocomplete="off" spellcheck="false" placeholder="Tempel hanya nilai API key Anda" required maxlength="512"><button data-toggle="savedKey" aria-label="Tampilkan API key" type="button">Lihat</button></div><p class="hint">Spasi di awal/akhir dihapus otomatis. Jangan tempel URL, “Bearer”, atau “Authorization”. Key tidak ditampilkan kembali setelah disimpan. BPS dan SDGs Access memakai credential terpisah; pilih SDGs hanya untuk operasi berlabel SDGs Access.</p><p id="keyFieldError" class="small" style="color:var(--error)" role="alert" hidden></p><div class="actions"><button id="saveKey" type="submit">Simpan API key</button><button id="testKey" type="button" class="secondary" disabled>Uji koneksi BPS</button><p class="hint">Menguji satu sampel per operasi Web API BPS dan SDGs Access dengan kredensial yang tersedia.</p></div></form><hr class="divider"><div class="key-card-head"><p class="hint">Key dienkripsi AES-256-GCM. Menghapus key akan menghentikan akses BPS, tetapi tidak menghapus akun Anda.</p><button id="deleteKey" class="text-button" type="button" disabled>Hapus key tersimpan</button></div><div id="deleteKeyConfirm" class="message info" hidden><p>Hapus key layanan ini? Simpan penggantinya agar akses BPS dapat digunakan lagi.</p><button id="confirmDeleteKey" type="button" class="danger">Ya, hapus key</button> <button id="cancelDeleteKey" type="button" class="secondary">Batal</button></div></div>
+<section id="view-wait" class="center-card" hidden><div class="round-icon">✉</div><p class="eyebrow">Verifikasi email</p><h2>Verifikasi email</h2><p>Email verifikasi ditujukan ke <strong id="waitEmail">alamat email akun Anda</strong>. Buka tautannya, lalu tekan <strong>Verifikasi email</strong>.</p><div id="waitMessage" class="message info"></div><p class="small">Tautan berlaku 1 jam. Periksa folder spam jika belum terlihat.</p><div class="actions"><a class="button" href="#login">Kembali ke halaman masuk</a><a href="#resend">Kirim ulang</a></div></section>
+<section id="view-verify" class="center-card" hidden><div class="round-icon">✓</div><p class="eyebrow">Konfirmasi akun</p><h2>Verifikasi email</h2><p>Tekan tombol berikut untuk mengonfirmasi tautan verifikasi dan melanjutkan ke halaman masuk.</p><div id="verifyMessage" class="message error" role="alert" hidden></div><button id="verifyEmail" type="button" class="full">Verifikasi email</button><div class="auth-links"><a href="#login">Masuk</a><a href="#resend">Minta tautan baru</a></div></section>
+<section id="view-oauth" class="center-card" hidden><div class="round-icon">⇄</div><p class="eyebrow">Persetujuan koneksi</p><h2>Persetujuan akses</h2><div id="oauthError" class="message error" role="alert" hidden></div><div id="oauthLogin" hidden><p>Masuk ke akun Anda untuk meninjau aplikasi dan izin yang diminta.</p><a class="button full" href="#login">Masuk untuk melanjutkan</a><p class="hint">Belum punya akun? <a href="#register">Daftar dan verifikasi email</a>, lalu kembali ke koneksi ini.</p></div><div id="oauthDetails" hidden><p><strong id="oauthName"></strong> meminta akses ke akun <strong id="oauthAccount"></strong>.</p><p class="hint">Nama aplikasi diberikan oleh klien. Periksa alamat callback sebelum memberi izin.</p><label>Identitas aplikasi</label><div id="oauthClient" class="endpoint"></div><label>Kembali ke aplikasi melalui</label><div id="oauthCallback" class="endpoint"></div><div class="message info"><strong>Izin: membaca data</strong><p>Mencari dataset Aceh dan mengambil data BPS menggunakan key tersimpan milik Anda. Sandi dan nilai API key tidak diberikan kepada aplikasi AI.</p></div><p class="hint">Akses berlaku hingga 30 hari dan dapat dicabut melalui Aplikasi terhubung. Akses BPS memerlukan API key yang sudah disimpan; <a href="#keys">kelola kunci BPS</a>.</p><div class="actions"><button id="oauthApprove" type="button">Izinkan akses</button><button id="oauthDeny" type="button" class="secondary">Tolak</button></div></div><p class="hint">Jika Anda tidak memulai koneksi ini, tutup halaman tanpa memberikan izin.</p><button id="oauthCancel" class="text-button" type="button">Kembali ke akun tanpa melanjutkan</button></section>
+<section id="view-secret" class="center-card" hidden><div class="round-icon">⌁</div><p class="eyebrow" id="secretEyebrow">Simpan dengan aman</p><h2 id="secretTitle">Token MCP Anda</h2><p id="secretIntro">Salin token ke pengaturan klien MCP. Token hanya ditampilkan sekali.</p><pre id="oneTimeSecret" class="secret" aria-label="Token akses sekali tampil"></pre><button id="copySecret" class="secondary full" type="button">Salin token MCP</button><label class="checkbox"><input id="secretSaved" type="checkbox"><span>Saya sudah menyimpan token ini dengan aman.</span></label><button id="secretContinue" class="full" type="button" disabled>Kembali ke token akses</button></section>
+<section id="view-dashboard" class="dashboard" hidden>
+  <aside class="sidebar">
+    <p class="sidebar-title">Pengelolaan akses</p>
+    <nav aria-label="Navigasi dasbor">
+      <a href="#dashboard" data-panel="dashboard">Ringkasan</a>
+      <a href="#connection" data-panel="connection">Koneksi MCP</a>
+      <a href="#keys" data-panel="keys">Kunci BPS</a>
+      <a href="#apps" data-panel="apps">Aplikasi terhubung</a>
+      <a href="#tokens" data-panel="tokens">Token akses</a>
+      <a href="#security" data-panel="security">Keamanan akun</a>
+    </nav>
+    <a class="sidebar-help" href="#guide">Panduan penggunaan ↗</a>
+  </aside>
+  <div class="workspace">
+    <div id="dashboardError" class="message error" role="alert" hidden></div>
+    <div id="panel-dashboard" data-dashboard-panel hidden>
+      <div class="page-heading"><div><p class="eyebrow">Dasbor</p><h2>Ringkasan</h2><p class="subheading">Pantau kredensial data dan akses aplikasi Anda.</p></div><a class="button" href="#connection">Hubungkan aplikasi</a></div>
+      <div class="overview-grid">
+        <a class="overview-card" href="#keys"><span>Kunci BPS</span><strong id="overviewKey">Belum disimpan</strong><span class="hint">Kredensial untuk mengambil statistik BPS <span aria-hidden="true">↗</span></span></a>
+        <a class="overview-card" href="#apps"><span>Aplikasi terhubung</span><strong id="overviewApps">0</strong><span class="hint">Akses yang disetujui melalui OAuth <span aria-hidden="true">↗</span></span></a>
+        <a class="overview-card" href="#tokens"><span>Token akses</span><strong id="overviewTokens">0</strong><span class="hint">Akses untuk bot dan integrasi backend <span aria-hidden="true">↗</span></span></a>
+      </div>
+      <section id="connectionSetup" class="card next-step" aria-labelledby="nextStepTitle"><div><h3 id="nextStepTitle">Hubungkan aplikasi Anda</h3><p>Pilih OAuth di aplikasi AI atau buat token untuk integrasi backend.</p></div><a class="button secondary" href="#connection">Lihat koneksi MCP</a></section>
+      <section class="card overview-note"><h3>Akses data publik</h3><p>Katalog Portal Satu Data Aceh dapat ditelusuri dengan akun terverifikasi. Untuk statistik BPS, gunakan kunci dari akun Web API BPS Anda.</p><a href="#explore">Buka penjelajah BPS ↗</a></section>
+    </div>
+<div id="panel-keys" data-dashboard-panel hidden><p class="eyebrow">Sumber data</p><h2>Kunci BPS</h2><p class="subheading">Simpan kredensial Web API BPS atau SDGs Access untuk mengambil data dengan akun Anda.</p><div class="card"><div class="key-card-head"><div><h3 id="keyServiceTitle">Web API BPS</h3><a class="small" href="https://webapi.bps.go.id/" target="_blank" rel="noopener noreferrer">Dapatkan kunci BPS ↗</a></div><span class="badge muted" id="keyBadge">Belum disimpan</span></div><p class="key-state" id="keyState">Belum ada key untuk layanan ini.</p><div id="keyFeedback" class="message" role="status" hidden></div><form id="keyForm" class="key-form" autocomplete="off"><label for="keyService">Layanan</label><select id="keyService"><option value="bps">Web API BPS</option><option value="sdgs">SDGs Access (opsional)</option></select><label for="savedKey" id="keyInputLabel">Kunci API</label><div class="password-wrap"><input id="savedKey" type="password" autocomplete="off" spellcheck="false" placeholder="Masukkan nilai kunci API" required maxlength="512"><button data-toggle="savedKey" aria-label="Tampilkan API key" type="button">Lihat</button></div><p class="hint">Masukkan nilai kunci tanpa URL atau awalan Bearer. Web API BPS dan SDGs Access menggunakan kredensial terpisah.</p><p id="keyFieldError" class="small" style="color:var(--error)" role="alert" hidden></p><div class="actions"><button id="saveKey" type="submit">Simpan kunci</button><button id="testKey" type="button" class="secondary" disabled>Uji koneksi BPS</button><p class="hint">Uji operasi BPS dan SDGs dengan kredensial yang tersimpan.</p></div></form><hr class="divider"><div class="key-card-head"><p class="hint">Kunci disimpan terenkripsi dan dapat diganti atau dihapus melalui halaman ini.</p><button id="deleteKey" class="text-button" type="button" disabled>Hapus kunci</button></div><div id="deleteKeyConfirm" class="message info" hidden><p>Hapus kunci layanan ini? Pengambilan data dari layanan ini memerlukan kunci pengganti.</p><button id="confirmDeleteKey" type="button" class="danger">Hapus kunci</button> <button id="cancelDeleteKey" type="button" class="secondary">Batal</button></div></div>
 <section id="bpsDiagnostic" class="card security-section" aria-labelledby="bpsDiagnosticTitle" hidden>
   <div class="key-card-head">
     <h3 id="bpsDiagnosticTitle">Hasil uji koneksi BPS</h3>
@@ -125,11 +186,34 @@
   </div>
 </section>
 </div>
-<div id="panel-apps" data-dashboard-panel hidden><h2>Aplikasi terhubung.</h2><p class="subheading">Aplikasi yang Anda izinkan membaca data melalui MCP. Pencabutan menghentikan permintaan berikutnya dan pembaruan token.</p><div class="card"><div class="key-card-head"><h3>Koneksi OAuth aktif</h3><button id="refreshApps" class="secondary" type="button">Perbarui daftar</button></div><div id="appList"></div></div><div class="actions"><a href="#connection" class="button secondary">Cara menghubungkan aplikasi</a></div>
-<details class="security-section" id="manualTokens"><summary>Token manual</summary><p class="subheading">Gunakan hanya untuk klien yang mendukung header Bearer manual. Untuk ChatGPT Web, gunakan OAuth pada halaman Hubungkan AI.</p><div class="card"><h3>Buat token baru</h3><form id="tokenForm"><div class="columns"><div><label for="tokenLabel">Nama klien</label><input id="tokenLabel" placeholder="Contoh: laptop pribadi" maxlength="80" required></div><div><label for="tokenDays">Masa berlaku</label><select id="tokenDays"><option value="7">7 hari</option><option value="30" selected>30 hari</option><option value="90">90 hari</option></select></div></div><div class="actions"><button id="createToken" type="submit">Buat token MCP</button></div></form><p class="hint">Token hanya ditampilkan sekali setelah dibuat. Jangan bagikan melalui prompt AI.</p></div><div class="card" style="margin-top:20px"><div class="key-card-head"><h3>Token aktif</h3><span class="badge muted" id="tokenCount">0 token</span></div><div id="tokenList"></div></div></details>
+<div id="panel-apps" data-dashboard-panel hidden>
+  <div class="page-heading"><div><h2>Aplikasi terhubung</h2><p class="subheading">Kelola aplikasi yang Anda izinkan mengakses data melalui OAuth.</p></div><button id="refreshApps" class="secondary" type="button">Muat ulang</button></div>
+  <div class="card list-card"><div id="appList"></div></div>
+  <p class="hint section-note">Mencabut akses menghentikan permintaan berikutnya. Aplikasi perlu meminta persetujuan kembali untuk terhubung.</p>
+  <a href="#connection">Hubungkan aplikasi lain ↗</a>
 </div>
-<div id="panel-connection" data-dashboard-panel hidden><p class="eyebrow">Panduan koneksi</p><h2>Hubungkan asisten AI.</h2><p class="subheading">Hubungkan ChatGPT Web atau klien MCP yang mendukung OAuth. Masuk dengan akun Anda dan setujui izin akses saat diminta.</p><div class="card"><h3>Koneksi OAuth</h3><p>Tambahkan endpoint berikut pada pengaturan MCP aplikasi AI dan pilih OAuth.</p><label>URL MCP</label><div id="oauthEndpoint" class="endpoint"></div><button id="copyOAuthEndpoint" type="button" class="secondary">Salin URL MCP</button><ol><li>Pilih autentikasi OAuth pada aplikasi AI.</li><li>Masuk ke akun ini saat halaman login dibuka.</li><li>Periksa identitas aplikasi dan callback, lalu izinkan akses baca data.</li></ol><p class="hint">Client ID/secret dapat dikosongkan jika aplikasi mendukung discovery dan registrasi otomatis. Ketersediaan menu mengikuti aplikasi dan kebijakan workspace.</p><div class="actions"><a href="#guide">Panduan per aplikasi</a><a href="#apps">Kelola aplikasi terhubung</a></div><hr class="divider"><details><summary>Pengaturan lanjutan: token manual dan klien SSE</summary><p class="hint">Gunakan hanya jika klien tidak mendukung OAuth. API key BPS tidak dipasang pada header MCP.</p><label for="transport">Transport klien lama</label><select id="transport"><option value="mcp">Streamable HTTP</option><option value="sse">SSE — kompatibilitas lama</option></select><label>URL endpoint</label><div id="endpoint" class="endpoint"></div><button id="copyEndpoint" type="button" class="secondary">Salin endpoint</button><label>Header token manual</label><pre class="code">Authorization: Bearer TOKEN_MCP_ANDA</pre><p class="hint">Pada SSE, header diperlukan untuk GET /sse dan POST /messages/. <a href="#tokens">Kelola token manual</a>. OAuth dan token manual memakai akses akun yang sama; pilih salah satu untuk setiap klien.</p></details></div></div>
-<div id="panel-security" data-dashboard-panel hidden><p class="eyebrow">Pengaturan akun</p><h2>Keamanan akun.</h2><p class="subheading">Mengganti sandi mencabut semua sesi dan akses MCP. Masuk kembali dan hubungkan ulang aplikasi AI setelah mengganti sandi.</p><div class="card"><h3>Ganti sandi</h3><form id="passwordForm" class="key-form"><label for="oldPassword">Sandi saat ini</label><input id="oldPassword" type="password" autocomplete="current-password" required><label for="newPassword">Sandi baru</label><input id="newPassword" type="password" autocomplete="new-password" required><label for="newPasswordConfirm">Ulangi sandi baru</label><input id="newPasswordConfirm" type="password" autocomplete="new-password" required><div class="actions"><button id="changePassword" type="submit">Ganti sandi dan keluar</button></div></form></div>
+<div id="panel-tokens" data-dashboard-panel hidden>
+  <div class="page-heading"><div><h2>Token akses</h2><p class="subheading">Buat token MCP untuk bot, aplikasi backend, atau klien dengan header Bearer.</p></div><span id="tokenCount" class="badge muted">0 token</span></div>
+  <details id="manualTokens" class="card create-token">
+    <summary>Buat token</summary>
+    <form id="tokenForm">
+      <div class="columns"><div><label for="tokenLabel">Nama token</label><input id="tokenLabel" placeholder="Contoh: bot-pelayanan-produksi" maxlength="80" required><p class="hint">Gunakan nama aplikasi dan lingkungannya agar mudah dikenali.</p></div><div><label for="tokenDays">Masa berlaku</label><select id="tokenDays"><option value="7">7 hari</option><option value="30" selected>30 hari</option><option value="90">90 hari</option></select></div></div>
+      <div class="actions"><button id="createToken" type="submit">Buat token</button></div>
+    </form>
+  </details>
+  <div class="card list-card"><div id="tokenList"></div></div>
+  <p class="hint section-note">Token hanya ditampilkan saat dibuat. Simpan di konfigurasi rahasia aplikasi. Cabut token ketika akses tidak diperlukan.</p>
+</div>
+<div id="panel-connection" data-dashboard-panel hidden>
+  <div class="page-heading"><div><h2>Koneksi MCP</h2><p class="subheading">Gunakan endpoint ini untuk menghubungkan aplikasi ke data Aceh dan BPS.</p></div></div>
+  <div class="card endpoint-card"><p id="endpointLabel" class="field-label">URL server</p><div class="endpoint-copy"><div id="oauthEndpoint" class="endpoint" role="textbox" aria-labelledby="endpointLabel" aria-readonly="true" tabindex="0"></div><button id="copyOAuthEndpoint" type="button" class="secondary">Salin URL</button></div><p class="hint">Transport Streamable HTTP</p></div>
+  <div class="connection-methods">
+    <section class="card"><span class="badge">Aplikasi AI</span><h3>OAuth</h3><p>Pilih OAuth di pengaturan MCP aplikasi Anda. Masuk saat diminta, periksa izin, lalu setujui koneksi.</p><a href="#guide">Panduan per aplikasi ↗</a></section>
+    <section class="card"><span class="badge muted">Bot dan backend</span><h3>Token akses</h3><p>Buat token MCP dan simpan sebagai secret di backend aplikasi Anda.</p><pre class="code">Authorization: Bearer TOKEN_MCP_ANDA</pre><a href="#tokens">Kelola token akses ↗</a></section>
+  </div>
+  <details class="card transport-options"><summary>Transport SSE</summary><p>Gunakan endpoint SSE jika diperlukan oleh klien.</p><label for="transport">Transport</label><select id="transport"><option value="mcp">Streamable HTTP</option><option value="sse">SSE</option></select><div id="endpoint" class="endpoint"></div><button id="copyEndpoint" type="button" class="secondary">Salin endpoint</button><p class="hint">Pada SSE, sertakan token MCP pada GET /sse dan POST /messages/.</p></details>
+</div>
+<div id="panel-security" data-dashboard-panel hidden><h2>Keamanan akun</h2><p class="subheading">Mengganti sandi mencabut semua sesi dan akses MCP. Masuk kembali dan hubungkan ulang aplikasi AI setelah mengganti sandi.</p><div class="card"><h3>Ganti sandi</h3><form id="passwordForm" class="key-form"><label for="oldPassword">Sandi saat ini</label><input id="oldPassword" type="password" autocomplete="current-password" required><label for="newPassword">Sandi baru</label><input id="newPassword" type="password" autocomplete="new-password" required><label for="newPasswordConfirm">Ulangi sandi baru</label><input id="newPasswordConfirm" type="password" autocomplete="new-password" required><div class="actions"><button id="changePassword" type="submit">Ganti sandi dan keluar</button></div></form></div>
 <div class="card security-section">
   <h3>Sesi web aktif</h3>
   <p>Lihat sesi yang masih berlaku atau akhiri sesi yang tidak Anda kenali.</p>
@@ -147,13 +231,16 @@
     <div class="actions"><button id="sendDeleteLink" type="submit" class="danger">Kirim tautan penghapusan</button></div>
   </form>
 </div>
-<div class="actions"><button id="logoutSecondary" type="button" class="secondary">Keluar dari akun</button></div></div>
+</div>
 </div></section>
-<section id="view-explore" class="wrap section" hidden><div class="section-head"><div><p class="eyebrow">Explorer data</p><h2>Coba operasi BPS.</h2><p>Gunakan key tersimpan untuk menjalankan satu operasi. Data dan pagination mengikuti respons asli BPS. Sukses pada satu operasi tidak membuktikan seluruh operasi tersedia.</p></div><span id="health" class="badge muted">Memeriksa layanan…</span></div><div id="explorerLoginNotice" class="message info" hidden>Masuk dan simpan API key BPS sebelum menjalankan permintaan. <a href="#login">Masuk ke akun ↗</a></div><div class="explorer"><form id="explorer"><label for="operation">Operasi BPS</label><select id="operation"><option value="listDomains">List domains</option></select><details style="margin-top:18px"><summary>Petunjuk parameter</summary><pre id="schema">Memuat skema…</pre></details><label for="parameters">Parameter JSON</label><textarea id="parameters" rows="8" spellcheck="false">{"type":"all"}</textarea><div class="actions"><button id="run" type="submit">Ambil data</button></div><div id="explorerError" class="message error" role="alert" hidden></div><p class="hint">Credential menggunakan sesi akun; jangan memasukkan API key ke parameter.</p></form><div class="result-area"><div class="result-head"><span>RESPONS BPS / JSON</span><span id="resultStatus">Belum dijalankan</span></div><pre id="result">Pilih operasi dan sesuaikan parameter, lalu tekan Ambil data.</pre></div></div></section>
-<section id="view-guide" class="wrap section" hidden><p class="eyebrow">Panduan singkat</p><h2>Akun, sumber data, dan izin aplikasi.</h2><div class="cards" style="margin:28px 0"><article class="card"><span class="badge">1 / Website ini</span><h3>Sandi akun</h3><p>Dipakai untuk masuk ke dashboard dan mengelola pengaturan Anda.</p></article><article class="card"><span class="badge">2 / Sumber BPS</span><h3>API key BPS</h3><p>Didapatkan dari Web API BPS. Disimpan terenkripsi agar server bisa mengambil data untuk Anda.</p></article><article class="card"><span class="badge">3 / Klien AI</span><h3>Izin aplikasi AI</h3><p>OAuth menerbitkan token otomatis setelah persetujuan Anda. Akses dapat dicabut pada Aplikasi terhubung. Token manual tersedia untuk klien lama.</p></article></div><div class="card"><h3>Mulai dari akun Anda</h3><p>Daftar dan verifikasi email, lalu masuk. Hubungkan klien melalui OAuth. Untuk memakai data BPS, simpan API key di dashboard dan gunakan Uji koneksi BPS. Token Bearer manual tetap tersedia sebagai alternatif.</p><div class="actions"><a href="#register" class="button">Buat akun</a><a href="#login" class="button secondary">Masuk</a><a href="https://webapi.bps.go.id/documentation/" target="_blank" rel="noopener noreferrer">Dokumentasi BPS ↗</a></div></div>
+<section id="view-explore" class="wrap section" hidden><div class="section-head"><div><p class="eyebrow">Data statistik</p><h2>Penjelajah BPS</h2><p>Pilih operasi dan parameter untuk mengambil data menggunakan kunci BPS yang tersimpan.</p></div><span id="health" class="badge muted">Memeriksa layanan…</span></div><div id="explorerLoginNotice" class="message info" hidden>Masuk dan simpan API key BPS sebelum menjalankan permintaan. <a href="#login">Masuk ke akun ↗</a></div><div class="explorer"><form id="explorer"><label for="operation">Operasi BPS</label><select id="operation"><option value="listDomains">List domains</option></select><details style="margin-top:18px"><summary>Petunjuk parameter</summary><pre id="schema">Memuat skema…</pre></details><label for="parameters">Parameter JSON</label><textarea id="parameters" rows="8" spellcheck="false">{"type":"all"}</textarea><div class="actions"><button id="run" type="submit">Ambil data</button></div><div id="explorerError" class="message error" role="alert" hidden></div><p class="hint">Kunci BPS diambil dari akun Anda. Isi parameter sesuai operasi yang dipilih.</p></form><div class="result-area"><div class="result-head"><span>RESPONS BPS / JSON</span><span id="resultStatus">Belum dijalankan</span></div><pre id="result">Pilih operasi dan sesuaikan parameter, lalu tekan Ambil data.</pre></div></div></section>
+<section id="view-guide" class="wrap section guide-page" hidden>
+  <p class="eyebrow">Dokumentasi</p><h2>Panduan koneksi</h2>
+  <p class="subheading">Pilih aplikasi dan ikuti langkah koneksi. Siapkan akun terverifikasi serta kunci BPS jika memerlukan statistik BPS.</p>
+  <div class="guide-links"><a href="#connection">Lihat endpoint MCP ↗</a><a href="#keys">Kelola kunci BPS ↗</a><a href="https://github.com/abdrhmn09/MCP_SatuDataAceh/blob/main/docs/integrasi-agent-kustom.md" target="_blank" rel="noopener noreferrer">Integrasi bot dan backend ↗</a></div>
 <div class="section client-guide">
   <h3>Koneksi jarak jauh dengan OAuth</h3>
-  <p>Tambahkan <code>https://www.mcpsatudataaceh.web.id/mcp</code> di aplikasi AI yang mendukung OAuth. Masuk saat diminta dan tinjau izin aplikasi. Server sudah berjalan di VPS sehingga Anda bisa langsung terhubung dari klien.</p>
+  <p>Tambahkan <code>https://www.mcpsatudataaceh.web.id/mcp</code> di pengaturan MCP aplikasi dan pilih OAuth. Masuk saat diminta, lalu setujui izin akses.</p>
   <details>
     <summary>ChatGPT Web</summary>
     <ol>
@@ -196,6 +283,20 @@
   }
 }</code></pre>
     <p class="small"><a href="https://code.visualstudio.com/docs/agents/reference/mcp-configuration">Dokumentasi VS Code</a></p>
+  </details>
+  <details>
+    <summary>OpenCode</summary>
+    <p>Tambahkan konfigurasi berikut di <code>opencode.json</code>, lalu jalankan <code>opencode mcp auth satu-data-aceh</code>.</p>
+    <pre class="code"><code>{
+  "mcp": {
+    "satu-data-aceh": {
+      "type": "remote",
+      "url": "https://www.mcpsatudataaceh.web.id/mcp",
+      "oauth": {"scope": "data:read"}
+    }
+  }
+}</code></pre>
+    <p class="small">Setujui akses di peramban, lalu periksa koneksi dengan <code>opencode mcp list</code>.</p>
   </details>
   <details>
     <summary>Pengaturan lanjutan · Jalankan server lokal dengan STDIO</summary>

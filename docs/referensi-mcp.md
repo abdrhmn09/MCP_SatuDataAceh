@@ -32,7 +32,7 @@ Kode domain Aceh adalah `1100` dan kode domain nasional adalah `0000`. Ambil kod
 
 Kunci API BPS dan token SDGs Access dikelola secara terpisah. Untuk server lokal STDIO, tetapkan `BPS_API_KEY` dan, bila diperlukan, `BPS_SDGS_TOKEN` pada lingkungan proses. Untuk layanan jarak jauh, simpan kredensial melalui dasbor akun.
 
-Di menu **API key**, **Uji koneksi BPS** menguji satu sampel tiap operasi secara bertahap. Operasi yang belum memiliki kredensial ditandai **Belum diuji**. Pengguna dapat memfilter status, menyalin laporan, dan membatalkan pengujian. Pengujian dapat dijalankan satu kali per akun setiap sepuluh menit.
+Di menu **Kunci BPS**, **Uji koneksi BPS** menguji satu sampel tiap operasi secara bertahap. Operasi yang belum memiliki kredensial ditandai **Belum diuji**. Pengguna dapat memfilter status, menyalin laporan, dan membatalkan pengujian. Pengujian dapat dijalankan satu kali per akun setiap sepuluh menit.
 
 Registri tersedia di [`src/bps_operations.json`](../src/bps_operations.json). [Skrip pembaruan registri](../scripts/update_bps_registry.py) menggunakan spesifikasi YAML BPS dan PyYAML.
 
